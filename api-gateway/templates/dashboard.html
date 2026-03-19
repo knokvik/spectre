@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTRE — Live Dashboard</title>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --border: #1e1e2e;
+            --accent: #00ff88;
+            --accent-dim: #00cc6e;
+            --text: #e0e0e0;
+            --text-dim: #888;
+            --danger: #ff4444;
+            --warn: #ffaa00;
+            --info: #4488ff;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .topbar {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 24px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .topbar .logo {
+            color: var(--accent);
+            font-weight: bold;
+            font-size: 1rem;
+            letter-spacing: 4px;
+        }
+        .topbar .sep { color: var(--border); }
+        .topbar .target { color: var(--text); }
+        .topbar .live {
+            color: var(--accent);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .topbar .phase {
+            margin-left: auto;
+            color: var(--warn);
+        }
+        .topbar .stop-btn {
+            background: var(--danger);
+            color: white;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .main {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            height: calc(100vh - 50px);
+        }
+        .sidebar {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .sidebar h3 {
+            color: var(--accent);
+            font-size: 0.75rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+        .phase-list { list-style: none; }
+        .phase-list li {
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .phase-list li.done { color: var(--accent); }
+        .phase-list li.active {
+            background: rgba(0,255,136,0.08);
+            color: var(--accent);
+            border: 1px solid rgba(0,255,136,0.2);
+        }
+        .phase-list li.pending { color: var(--text-dim); }
+        .stats {
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.82rem;
+        }
+        .stat-item .val { color: var(--accent); font-weight: bold; }
+        .content {
+            padding: 20px;
+            overflow-y: auto;
+        }
+        .content h3 {
+            color: var(--accent);
+            font-size: 0.75rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+        .log-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            height: calc(100vh - 130px);
+            overflow-y: auto;
+            font-size: 0.82rem;
+            line-height: 1.8;
+        }
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(30,30,46,0.5);
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        .log-entry .time { color: var(--text-dim); margin-right: 8px; }
+        .log-entry .tag {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            margin-right: 8px;
+            font-weight: bold;
+        }
+        .tag-recon { background: rgba(0,255,136,0.15); color: var(--accent); }
+        .tag-info { background: rgba(68,136,255,0.15); color: var(--info); }
+        .tag-warn { background: rgba(255,170,0,0.15); color: var(--warn); }
+        .tag-error { background: rgba(255,68,68,0.15); color: var(--danger); }
+        .tag-critical { background: rgba(255,0,0,0.4); color: #fff; text-shadow: 0 0 10px red; }
+        .tag-attack { background: rgba(180,0,255,0.15); color: #c881ff; }
+        .tag-success { background: rgba(0,255,136,0.25); color: var(--accent); border: 1px solid var(--accent); }
+        .tag-ml { background: rgba(0,200,255,0.15); color: #00c8ff; }
+        .tag-llm { background: rgba(255,100,200,0.15); color: #ff64c8; }
+        .tag-score { background: linear-gradient(135deg, rgba(255,200,0,0.2), rgba(255,100,0,0.2)); color: #ffaa00; border: 1px solid rgba(255,170,0,0.3); }
+        .risk-card {
+            margin-top: 24px;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            text-align: center;
+            display: none;
+        }
+        .risk-card .grade {
+            font-size: 2.4rem;
+            font-weight: bold;
+            line-height: 1;
+            margin: 8px 0;
+        }
+        .risk-card .score-val {
+            font-size: 1.1rem;
+            color: var(--text-dim);
+        }
+        .risk-card .level {
+            font-size: 0.8rem;
+            margin-top: 6px;
+            padding: 2px 10px;
+            border-radius: 3px;
+            display: inline-block;
+            font-weight: bold;
+        }
+        .level-critical { background: rgba(255,0,0,0.3); color: #ff4444; }
+        .level-high { background: rgba(255,100,0,0.3); color: #ff6644; }
+        .level-medium { background: rgba(255,170,0,0.3); color: #ffaa00; }
+        .level-low { background: rgba(0,255,136,0.3); color: var(--accent); }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-dim);
+        }
+        .empty-state .spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <span class="logo">▌SPECTRE▐</span>
+        <span class="sep">│</span>
+        <span class="target" id="targetDisplay">{{.TargetURL}}</span>
+        <span class="sep">│</span>
+        <span class="live">● LIVE</span>
+        <span class="phase" id="phaseDisplay">Phase 1/7: RECON</span>
+        <button class="stop-btn" onclick="stopTest()">■ STOP</button>
+    </div>
+
+    <div class="main">
+        <div class="sidebar">
+            <h3>Phase Tracker</h3>
+            <ul class="phase-list">
+                <li class="active" id="phase-recon">▶ 1. Recon</li>
+                <li class="pending" id="phase-ml-analysis">○ 2. ML Analysis</li>
+                <li class="pending" id="phase-attack">○ 3. Attack</li>
+                <li class="pending" id="phase-classify">○ 4. Classify</li>
+                <li class="pending" id="phase-score">○ 5. Score</li>
+                <li class="pending" id="phase-report">○ 6. Report</li>
+            </ul>
+
+            <div class="risk-card" id="riskCard">
+                <div style="font-size:0.7rem;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase">Risk Grade</div>
+                <div class="grade" id="riskGrade">—</div>
+                <div class="score-val" id="riskScoreVal">—/10</div>
+                <div class="level" id="riskLevel">—</div>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <span>Events</span>
+                    <span class="val" id="eventCount">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>Ports Found</span>
+                    <span class="val" id="portCount">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>Elapsed</span>
+                    <span class="val" id="elapsed">0s</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="content">
+            <h3>Live Recon Timeline</h3>
+            <div class="log-container" id="logContainer">
+                <div class="empty-state" id="emptyState">
+                    <div class="spinner"></div>
+                    <p>Waiting for recon results...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const sessionID = "{{.ID}}";
+        let eventCount = 0;
+        let portCount = 0;
+        const startTime = Date.now();
+
+        // Update elapsed timer
+        setInterval(() => {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const mins = Math.floor(elapsed / 60);
+            const secs = elapsed % 60;
+            document.getElementById('elapsed').textContent =
+                mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        }, 1000);
+
+        // Connect to SSE
+        const evtSource = new EventSource(`/api/session/events?session=${sessionID}`);
+
+        evtSource.onmessage = function(event) {
+            const msg = JSON.parse(event.data);
+
+            // Remove empty state on first message
+            const emptyState = document.getElementById('emptyState');
+            if (emptyState) emptyState.remove();
+
+            eventCount++;
+            document.getElementById('eventCount').textContent = eventCount;
+
+            // Extract info
+            const data = msg.data;
+            
+            // Handle session state phase updates
+            if (msg.stream === "session-state" && data.phase) {
+                const phases = ['recon', 'ml-analysis', 'attack', 'classify', 'score', 'report'];
+                let passedActive = false;
+                for (let p of phases) {
+                    const el = document.getElementById('phase-' + p);
+                    if (!el) continue;
+                    
+                    if (p === data.phase) {
+                        el.className = 'active';
+                        el.innerHTML = el.innerHTML.replace(/^[○✓▶]/, '▶');
+                        passedActive = true;
+                        document.getElementById('phaseDisplay').textContent = `Phase ${phases.indexOf(p)+1}/${phases.length}: ${p.toUpperCase()}`;
+                    } else if (!passedActive) {
+                        el.className = 'done';
+                        el.innerHTML = el.innerHTML.replace(/^[○✓▶]/, '✓');
+                    } else {
+                        el.className = 'pending';
+                        el.innerHTML = el.innerHTML.replace(/^[○✓▶]/, '○');
+                    }
+                }
+                return; // Don't print state updates to timeline
+            }
+
+            const type = data.type || 'info';
+            const step = data.step || '';
+            const message = data.message || JSON.stringify(data);
+
+            // Count ports
+            if (data.open_ports) {
+                const ports = Array.isArray(data.open_ports) ? data.open_ports : [];
+                portCount += ports.length;
+                document.getElementById('portCount').textContent = portCount;
+            }
+
+            // Determine tag styling
+            let tagClass = "tag-info";
+            let tagLabel = type.toUpperCase();
+            
+            if (type === 'recon') { tagClass = 'tag-recon'; }
+            else if (type === 'info') { tagClass = 'tag-info'; }
+            else if (type === 'warning') { tagClass = 'tag-warn'; }
+            else if (type === 'error') { tagClass = 'tag-error'; }
+            else if (type === 'critical') { tagClass = 'tag-critical'; }
+            else if (type === 'attack') { tagClass = 'tag-attack'; }
+            else if (type === 'success') { tagClass = 'tag-success'; }
+            else if (type === 'ml-prediction') { tagClass = 'tag-ml'; tagLabel = 'ML'; }
+            else if (type === 'llm-classification') { tagClass = 'tag-llm'; tagLabel = 'LLM'; }
+            else if (type === 'risk-score') {
+                tagClass = 'tag-score'; tagLabel = 'SCORE';
+                // Show risk card in sidebar
+                const card = document.getElementById('riskCard');
+                if (card) card.style.display = 'block';
+                // Parse score from message (format: "📋 RISK SCORE: X.X/10 (LEVEL) — Grade: G")
+                const scoreMatch = message.match(/([\d.]+)\/10/);
+                const levelMatch = message.match(/\(([A-Z]+)\)/);
+                const gradeMatch = message.match(/Grade:\s*([A-F])/);
+                if (scoreMatch) document.getElementById('riskScoreVal').textContent = scoreMatch[1] + '/10';
+                if (gradeMatch) {
+                    const g = document.getElementById('riskGrade');
+                    g.textContent = gradeMatch[1];
+                    const colors = {A:'var(--accent)',B:'#88ff00',C:'#ffaa00',D:'#ff6644',F:'#ff4444'};
+                    g.style.color = colors[gradeMatch[1]] || 'var(--text)';
+                }
+                if (levelMatch) {
+                    const lv = document.getElementById('riskLevel');
+                    lv.textContent = levelMatch[1];
+                    lv.className = 'level level-' + levelMatch[1].toLowerCase();
+                }
+            }
+            
+            // Fallback for step labels if provided
+            if (step && type === 'info') {
+                tagClass = 'tag-recon';
+                tagLabel = 'RECON';
+            }
+
+            // Add log entry
+            const container = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+
+            entry.innerHTML = `
+                <span class="time">${timeStr}</span>
+                <span class="tag ${tagClass}">${tagLabel}</span>
+                ${step ? `<strong>[${step}]</strong> ` : ''}
+                ${typeof message === 'string' ? message : JSON.stringify(message)}
+            `;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        };
+
+        evtSource.onerror = function() {
+            console.log('SSE connection lost, reconnecting...');
+        };
+
+        function stopTest() {
+            if (confirm('Stop the assessment?')) {
+                evtSource.close();
+                document.querySelector('.live').textContent = '● STOPPED';
+                document.querySelector('.live').style.color = '#ff4444';
+            }
+        }
+    </script>
+</body>
+</html>

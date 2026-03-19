@@ -1,0 +1,1 @@
+print("NVD Service starting...")

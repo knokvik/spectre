@@ -1,0 +1,1339 @@
+
+
+
+▌ SPECTRE ▐
+
+Security Penetration Engine with
+Closed-loop Threat Response and Evaluation
+A Containerized, AI-Orchestrated, Consent-First Adaptive Penetration Testing & Scoring Platform
+
+Author
+John Doe
+Version
+2.0 — Full Architecture & Research Planning Document
+Date
+March 2026
+Document Status
+Pre-Development — Architecture Finalized, Build Starting
+Project Category
+Cybersecurity · AI/ML · Distributed Systems · Open Source
+Language Stack
+Go 1.22  +  Python 3.11  +  Redis 7  +  Docker Compose
+Target Venues
+IEEE S&P Workshop · USENIX Security · ACM CODASPY · DEF CON Arsenal
+License
+MIT Open Source — Full Public Release from Month 2
+
+
+
+DEPARTMENT OF ELECTRONICS AND TELECOMMUNICATION ENGINEERING
+MIT Academy of Engineering, Alandi (D), Pune — 412105, Maharashtra, India
+
+Name: Why SPECTRE?
+The project was previously titled AIVSS 2.0. Following a thorough review of the 2025–2026 research landscape, it was renamed to SPECTRE for the following reasons:
+
+Consideration
+Detail
+Decision
+Namespace Collision
+OWASP launched an official 'AIVSS' (AI Vulnerability Scoring System) in 2025 for agentic AI risks
+Immediate rename mandatory — desk-reject risk
+ADAPT
+Already used by a 2024–2025 architecture-driven automated pentesting framework
+Avoid
+SPECTRE Collision Check
+No active research project or open-source tool uses this name in the security testing space
+Clear — safe to use
+Acronym Accuracy
+S·P·E·C·T·R·E maps precisely to the system's functional description
+Technically correct
+Memorability
+Single word, strong association with covert intelligence — fits the red-team context
+High recall for conference audiences
+Searchability
+Google Scholar + GitHub search returns zero conflicting projects
+Unique namespace confirmed
+
+S · Security   P · Penetration   E · Engine   C · Closed-loop   T · Threat   R · Response   E · Evaluation
+
+
+Executive Summary
+SPECTRE is a next-generation, fully containerized, consent-first adaptive penetration testing platform. It accepts a target URL from a participant running a sandboxed application with a fake database, then autonomously executes a complete security assessment using a closed-loop AI feedback architecture — producing a real-time Extended Behaviour-Based Security Score (EBSS) backed by confirmed runtime evidence.
+
+Core Innovation: The system adapts every attack decision in real time based on what the previous attack revealed — it learns during the test, not before it.
+
+SPECTRE distinguishes itself from all existing tools across five dimensions:
+	•	Explainable Random Forest ML (Model 1) with SHAP visualizations — not a black-box LLM
+	•	NVD/CVE-grounded attack decisions (Model 2) — every attack traceable to a real CVE record
+	•	Local Ollama LLM for platform fingerprinting — zero API cost, fully offline, conference-safe
+	•	Full Kali Linux / Parrot OS tool library orchestrated by AI — not hardcoded scripts
+	•	Live interactive dashboard + automated PDF report with EBSS score and remediation steps
+
+The system operates exclusively in sandboxed, consented environments with fake databases, making it legally compliant, ethically sound, and fully reproducible — targeting conference demos and educational self-service use cases that existing autonomous agent systems cannot serve.
+
+1. Problem Statement & Motivation
+1.1 The Fundamental Gap
+Current vulnerability assessment tools occupy two extremes: static scanners (Nmap, Nikto, ZAP) that run fixed rule sets without adaptation, and manual penetration testers who are expensive, unavailable at scale, and impossible to demo live at a conference. Between these extremes lies an unoccupied space — adaptive, explainable, lightweight automated penetration testing with real-time scoring. SPECTRE fills this space.
+
+1.2 Limitations of CVSS-Only Scoring
+	•	CVSS assigns identical scores regardless of whether an exploit actually works on a target system
+	•	A CVSS 9.8 vulnerability may be completely unexploitable in a well-configured environment
+	•	A CVSS 5.0 vulnerability may be trivially exploitable due to runtime misconfigurations
+	•	No existing scoring system incorporates confirmed runtime exploit evidence into the score
+	•	Security teams waste budget on CVSS-prioritized patching that doesn't reflect actual risk
+
+1.3 Why Existing Tools Fall Short
+Tool
+Adaptive ML?
+NVD-Grounded?
+Live Dashboard?
+Consent-First?
+EBSS Score?
+Open Source?
+Deployable in 1 cmd?
+Nmap
+No
+No
+No
+No
+No
+Yes
+Yes
+Nikto
+No
+No
+No
+No
+No
+Yes
+Yes
+OWASP ZAP
+Partial
+No
+Partial
+No
+No
+Yes
+Yes
+Metasploit
+Manual
+Partial
+No
+No
+No
+Yes
+Complex
+Burp Suite Pro
+Partial
+No
+Yes
+No
+No
+No
+No
+PentestGPT
+LLM only
+No
+Partial
+No
+No
+Yes
+No
+xOffense (2025)
+LLM agents
+No
+No
+No
+No
+Partial
+No
+ADAPT (2025)
+No
+Partial
+No
+No
+No
+Yes
+Complex
+SPECTRE (Ours)
+RF + LLM
+Full CPE
+Yes + RT
+Yes
+Yes + EBSS
+Target: Full
+Yes — 1 cmd
+
+2. Related Work & Honest Positioning
+This section provides an honest comparison against the current state-of-the-art as of early 2026. Unlike a table designed to make SPECTRE win every column, we explicitly acknowledge where competing systems are stronger and articulate our differentiated value proposition.
+
+2.1 xOffense (arXiv Sep 2025)
+xOffense is a multi-agent LLM framework where specialized agents collaborate on offensive security tasks. Its raw attack reasoning capability exceeds SPECTRE's because it leverages large language models for tactical decision-making across a broader attack surface. However, it has no NVD/CPE grounding, no consent framework, requires external LLM API calls (cost + availability), lacks an EBSS scoring output, and is not deployable as a single Docker Compose command. It targets research offensive use cases, not educational self-service assessment.
+
+2.2 ADAPT (2024–2025)
+ADAPT uses a formal architecture-driven approach to automated penetration testing with knowledge graph representations of attack paths. It is well-structured academically but does not use ML feedback loops — attack paths are statically planned before execution begins. There is no live dashboard, no EBSS scoring, and no consent-first demo capability.
+
+2.3 PentestGPT (2024–2026)
+PentestGPT integrates LLM reasoning into penetration testing workflows and has an active open-source community. It has partial LLM-driven adaptation but lacks NVD/CVE grounding, SHAP explainability, and a quantified scoring output. Its primary mode is assisting human testers, not autonomous operation with a consent dashboard for self-service participants.
+
+2.4 SPECTRE's Differentiated Position
+We do not compete with xOffense on raw attack power. We beat all existing systems on deployability, explainability, ethical compliance, and quantified scoring.
+
+Dimension
+xOffense
+PentestGPT
+ADAPT
+SPECTRE
+Attack Sophistication
+High (LLM multi-agent)
+High (LLM)
+Medium (formal)
+Medium-High (RF+LLM+tools)
+NVD/CVE Grounding
+None
+None
+Partial
+Full CPE matching
+ML Explainability
+None (black box)
+None (black box)
+N/A
+SHAP on Model 1
+Consent-First Design
+No
+No
+No
+Yes — core feature
+EBSS Scoring
+No
+No
+No
+Yes — real-time
+Offline / Local
+No (API needed)
+No (API needed)
+Yes
+Yes — Ollama local LLM
+Single-cmd Deploy
+No
+No
+Complex
+Yes — Docker Compose
+Public Dataset
+No
+No
+No
+Yes — HuggingFace release
+Conference Demo
+Not suitable
+Partial
+Not suitable
+Designed for this
+
+3. System Architecture
+3.1 Architectural Philosophy
+SPECTRE is built on three architectural principles. Full decoupling: every service communicates exclusively through Redis Streams — nothing calls another service directly. Observability: every message in the system is visible through RedisInsight, making the AI's reasoning completely transparent. Reproducibility: the entire system launches with a single docker compose up command on any machine.
+
+3.2 High-Level System Diagram
+
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │                        SPECTRE — SYSTEM OVERVIEW                         │
+  └──────────────────────────────────────────────────────────────────────────┘
+                                                                               
+   PARTICIPANT (Browser)                                                       
+       │  URL + Fake DB Confirmation + Consent Form                            
+       ▼                                                                       
+  ┌────────────────────────┐   WebSocket/SSE   ┌──────────────────────────┐   
+  │    WEB DASHBOARD       │◄──────────────────│   SPECTRE API Gateway    │   
+  │    (Go + HTMX)         │                   │   (Go, port 8080)        │   
+  │  ▸ Live attack log     │                   └──────────┬───────────────┘   
+  │  ▸ EBSS score gauge    │                              │                   
+  │  ▸ Phase progress      │     ┌────────────────────────▼─────────────────┐ 
+  │  ▸ Findings panel      │     │           REDIS 7 — MESSAGE BUS           │ 
+  │  ▸ Download PDF        │◄────│  Streams: recon │ platform │ nvd-matches  │ 
+  └────────────────────────┘     │           decisions │ atk-results │ tags  │ 
+                                 │           ml-output │ ebss │ session      │ 
+  ┌────────────────────┐         └──┬──────┬──────┬────┴─────┬─────┬────────┘ 
+  │   REDISINSIGHT     │            │      │      │          │     │           
+  │   port 8001        │         ┌──▼──┐ ┌─▼──┐ ┌▼───┐  ┌───▼─┐ ┌▼────────┐  
+  │   Full stream viz  │         │RECON│ │OLMA│ │ NVD│  │ ATK │ │  ML     │  
+  └────────────────────┘         │ GO  │ │ PY │ │ PY │  │ORCH │ │ ENGINE  │  
+                                 │     │ │LLM │ │    │  │ GO  │ │ PYTHON  │  
+                                 └─────┘ └────┘ └────┘  └─────┘ └────┬────┘  
+                                                                       │       
+                                              ┌────────────────────────▼─────┐ 
+                                              │   SCORING + REPORT (Python)  │ 
+                                              │   EBSS formula + PDF output  │ 
+                                              └──────────────────────────────┘ 
+
+3.3 Target Scope by Version
+Target Type
+v1 (Now)
+v2 (Future)
+Primary Attack Surface
+Key Tools
+Web Application (HTTP/S)
+Full
+Enhanced
+Forms, auth, API endpoints, cookies
+SQLMap, Nuclei, Hydra, custom payloads
+Web Server (nginx/Apache/IIS)
+Full
+Enhanced
+Open ports, versions, TLS, headers
+Nmap, Nuclei CVE templates, testssl.sh
+Database (via web layer)
+Full
+Enhanced
+SQL injection through HTTP endpoints
+SQLMap full chain
+Database (direct port)
+Partial
+Full
+Version banner + CVE match + basic probe
+Nmap, banner grab
+REST / GraphQL API
+Partial
+Full
+Auth, injection, broken object level auth
+Custom scripts, Arjun
+Desktop / Binary
+No
+Planned
+Binary fuzzing, memory
+AFL++, Ghidra (v3)
+
+4. Component Deep Dives
+4.1 Recon Engine (Go)
+The Recon Engine is the entry point for every assessment session. Written in Go for maximum concurrency — it uses goroutines to perform all recon tasks in parallel, completing full reconnaissance in under 90 seconds for most targets.
+
+  INPUT ──► Target URL/IP from participant
+                │
+  ┌─────────────▼────────────────────────────────────────────────┐
+  │  RECON ENGINE (Go)  — all steps run concurrently             │
+  │                                                              │
+  │  Step 1: DNS resolution + reverse DNS + WHOIS               │
+  │  Step 2: TCP port scan — top 1000 ports (goroutines)         │
+  │  Step 3: Service version banner grab per open port           │
+  │  Step 4: HTTP/S header harvest                               │
+  │           → Server, X-Powered-By, X-Frame-Options            │
+  │           → Set-Cookie flags, CORS headers, CSP              │
+  │           → HSTS, X-Content-Type, Referrer-Policy            │
+  │  Step 5: TLS/SSL certificate analysis                        │
+  │           → Cipher suites, protocol versions, cert validity  │
+  │  Step 6: WAF detection (response pattern fingerprinting)     │
+  │  Step 7: CMS detection (WordPress/Drupal/Joomla signatures)  │
+  │  Step 8: robots.txt + sitemap.xml harvesting                 │
+  │  Step 9: JavaScript file discovery + framework hints         │
+  │  Step 10: Error page generation → stack trace harvesting     │
+  └──────────────────────────────────────────────────────────────┘
+                │
+  OUTPUT ──► Redis Stream: recon-results
+  {
+    open_ports: [80, 443, 3306, 8080],
+    services: {80:'nginx/1.18', 3306:'mysql/8.0.28'},
+    headers: {server:'nginx/1.18', powered_by:'Express'},
+    tls: {version:'TLSv1.2', weak_ciphers: true},
+    waf: {detected: false},
+    cms: {type:'custom', hints:['vue.js','node']},
+    errors: {stack_traces_found: true, db_errors: 2}
+  }
+
+4.2 Local LLM Platform Classifier (Python + Ollama)
+Instead of calling an external GenAI API (which introduces cost, latency, and reliability risk for conference demos), SPECTRE runs a local Ollama instance inside Docker using Llama-3.2-3B or Qwen2.5-7B. These models run comfortably on an 8GB laptop and perform platform classification at high accuracy. The model never generates attack payloads — only classifies platform stack from text observations.
+
+  WHY LOCAL LLM IS THE RIGHT CALL:
+  ▸ Ollama + Llama-3.2-3B runs on 8GB RAM inside Docker — no GPU required
+  ▸ Zero API cost — critical for a conference where 50+ people use the tool
+  ▸ Zero latency variance — consistent response time for live demo
+  ▸ Offline capable — conference WiFi is notoriously unreliable
+  ▸ No rate limits — all 50 simultaneous sessions get full LLM access
+  ▸ Zero risk of the LLM refusing a platform classification request
+
+  PROMPT TEMPLATE (sent to local Ollama):
+  ═══════════════════════════════════════════════════════════════
+  System: You are a server fingerprinting expert. Analyze HTTP
+          observations and return ONLY a JSON object. No prose.
+
+  User: Given these observations from a web target:
+    open_ports: [80, 443, 3306]
+    server_header: 'nginx/1.18.0 (Ubuntu)'
+    x_powered_by: 'Express'
+    error_hints: ['Sequelize', 'MySQL', 'at Object.query']
+    js_files: ['vue.min.js', 'axios.min.js']
+    cookie_flags: {httponly: true, secure: false, samesite: 'none'}
+
+  Return JSON: {
+    web_server: {name, version, os, confidence},
+    backend: {language, framework, confidence},
+    database: {type, version_hint, confidence},
+    frontend: {framework, confidence},
+    waf: {detected, vendor},
+    attack_surface_notes: [string]
+  }
+
+  OUTPUT: {
+    web_server: {name:'nginx', version:'1.18.0', os:'Ubuntu', confidence:0.96},
+    backend: {language:'Node.js', framework:'Express', confidence:0.91},
+    database: {type:'MySQL', version_hint:'8.x', confidence:0.87},
+    ...
+  }
+
+4.3 NVD/CVE Intelligence Service (Python)
+The NVD service maintains a local SQLite index of the National Vulnerability Database JSON feeds, updated weekly. Given a platform profile from the LLM classifier, it returns ranked CVEs with exploit availability, EPSS scores, and attack category mappings.
+
+Feature
+Implementation
+Output
+Why It Matters
+CPE Matching
+Exact version matching against NVD CPE dictionary
+CVE list for nginx:1.18 + MySQL:8.0.28
+Attacks grounded in real threat intel
+CVSS Score Retrieval
+Both CVSS v3.1 base + temporal scores
+Numeric severity per CVE
+Foundation of EBSS formula
+EPSS Score Lookup
+Exploit Prediction Scoring System API
+Probability of exploitation in 30 days
+Prioritizes CVEs most likely to be exploited
+KEV Catalog Check
+CISA Known Exploited Vulnerabilities feed
+Binary: actively exploited in wild
+Highest priority CVEs in attack decisions
+ExploitDB Mapping
+ExploitDB offline mirror cross-reference
+PoC availability flag + EDB-ID
+Confirms exploit exists, not just CVE
+Attack Category Tag
+Custom mapping table: CVE → attack type
+SQL injection / XSS / RCE / etc.
+Routes to correct attack library module
+
+4.4 Attack Orchestrator (Go)
+The Attack Orchestrator wraps the complete Kali Linux / Parrot OS security tool ecosystem as a Go subprocess manager. It receives attack decisions from the ML engine via Redis and executes the appropriate tool with the correct parameters, capturing all output back to Redis.
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  ATTACK LIBRARY — Full Coverage                                      │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  INJECTION ATTACKS                                                   │
+  │    SQLMap         → error-based / union / blind / time-based SQLi    │
+  │    Custom scripts → second-order SQLi, stored procedure abuse        │
+  │    XSS probes     → reflected / stored / DOM-based                   │
+  │    Header inject  → Host header, X-Forwarded-For, Referer injection  │
+  │    SSTI probes    → Jinja2, Twig, Freemarker template injection      │
+  │    SSRF probes    → internal service discovery, cloud metadata       │
+  │                                                                      │
+  │  AUTHENTICATION ATTACKS                                              │
+  │    Hydra          → HTTP POST brute force, basic auth, form login    │
+  │    Custom         → JWT alg:none, RS256→HS256 confusion              │
+  │    Custom         → session fixation, cookie manipulation            │
+  │    Custom         → password reset token predictability              │
+  │                                                                      │
+  │  ACCESS CONTROL ATTACKS                                              │
+  │    IDOR scanner   → sequential ID traversal (1 to N)                 │
+  │    Custom         → UUID prediction (v1 timestamp brute)             │
+  │    Custom         → horizontal + vertical privilege escalation probes│
+  │    Gobuster       → directory traversal, path enumeration            │
+  │                                                                      │
+  │  SERVER-LEVEL ATTACKS                                                │
+  │    Nuclei          → 8,000+ CVE-specific templates                   │
+  │    Testssl.sh      → TLS/SSL weakness, BEAST, POODLE, ROBOT          │
+  │    Nikto           → server misconfiguration detection               │
+  │    Custom          → security header audit (12 headers checked)      │
+  │                                                                      │
+  │  MODERN ATTACK SURFACES (v1 Partial)                                 │
+  │    Arjun           → GraphQL introspection, REST parameter discovery  │
+  │    Custom          → API rate limiting bypass, mass assignment        │
+  │    Custom          → JWT claims manipulation, scope escalation        │
+  └─────────────────────────────────────────────────────────────────────┘
+
+4.5 ML Engine — Model 1: Response Classifier (Python + scikit-learn)
+Model 1 is a Random Forest classifier trained to read raw HTTP attack responses and output structured vulnerability tags. It is the sensory layer of SPECTRE. The key differentiator over existing tools is SHAP (SHapley Additive exPlanations) integration — every classification decision comes with a human-readable explanation of which features drove the prediction.
+
+Input Feature
+Type
+Extraction Method
+Example Value
+HTTP Status Code
+Categorical
+Direct from response
+500 (server error)
+Response Time (ms)
+Continuous
+Timer wrapper on request
+2847ms vs 120ms baseline
+Body Length Delta
+Continuous
+Compare to baseline response size
++6240 bytes (data leaked?)
+Error Keyword Score
+Count
+TF-IDF on error keywords (SQL/stack)
+4 MySQL error terms found
+SQL Pattern Match
+Binary
+Regex on response body
+True: 'syntax error near...'
+Stack Trace Detected
+Binary
+Pattern match on class/file paths
+True: 'at app.js:142:7'
+Redirect Count
+Count
+Follow redirect chain
+0 (no WAF redirect intercepted)
+Rate Limit Signal
+Binary
+429 or Retry-After header present
+False (no rate limiting)
+Auth Failure Pattern
+Count
+401/403 frequency in last 60s
+47 failures — brute possible
+WAF Intercept Signal
+Binary
+WAF vendor fingerprint in response
+False
+CORS Header Exposure
+Categorical
+Origin reflection analysis
+Wildcard (*) — misconfigured
+Cookie Security Flags
+Score
+HttpOnly+Secure+SameSite presence
+2/3 flags present
+
+  OUTPUT LABELS (multi-label classification):
+  sql-injectable  |  xss-reflected  |  xss-stored  |  idor-present
+  auth-weak  |  rate-limited  |  waf-detected  |  verbose-errors
+  path-traversal  |  jwt-vulnerable  |  ssrf-possible  |  normal
+
+SHAP Integration: After each classification, SPECTRE generates a SHAP waterfall plot exported to the PDF report showing exactly which features pushed the prediction toward 'sql-injectable' vs 'normal'. This is the explainability feature that no existing adaptive pentest tool provides and that reviewers in 2026 specifically look for.
+
+4.6 ML Engine — Model 2: Attack Decision Engine (Python)
+Model 2 is an NVD-informed expert decision tree that selects the next attack based on Model 1's vulnerability tags, the session's attack history, and CVE intelligence from the NVD service. It is deterministic and fully explainable — every decision can be traced to a specific rule, a specific CVE, and a specific observation.
+
+  DECISION ENGINE — Core Logic
+  ════════════════════════════════════════════════════════════════
+
+  PRIORITY 1: KEV catalog matches (actively exploited in wild)
+    if nvd.kev_match AND NOT already_tested(cve_id):
+        → run targeted Nuclei CVE template immediately
+        → priority: CRITICAL — test before anything else
+
+  PRIORITY 2: Confirmed injectable endpoints
+    if tags.sql_injectable AND NOT tags.waf_detected:
+        → SQLMap --level=3 --risk=2 --batch
+        → on success: SQLMap --dump --threads=4
+        → on partial: try UNION extraction manually
+
+    if tags.sql_injectable AND tags.waf_detected:
+        → SQLMap --tamper=space2comment,between,charencode
+        → try manual payload encoding variations
+        → slow rate (1 req / 3s) to avoid block
+
+  PRIORITY 3: Authentication surface
+    if tags.auth_weak AND NOT tags.rate_limited:
+        → Hydra HTTP-POST with rockyou-top-1000
+        → on partial match: escalate to full rockyou-30k
+
+    if tags.auth_weak AND tags.rate_limited:
+        → slow brute (1 req / 8s, rotate User-Agent)
+        → test for lockout bypass (X-Forwarded-For rotation)
+
+  PRIORITY 4: Access control
+    if tags.idor_present:
+        → sequential ID scan 1–1000 on affected endpoint
+        → UUID v1 timestamp prediction if UUID format detected
+        → test horizontal privilege (swap own ID for others)
+
+  PRIORITY 5: Verbose error exploitation
+    if tags.verbose_errors AND nvd.db_match:
+        → targeted Nuclei template for matched DB CVE
+        → manual error-based extraction attempt
+
+  FALLBACK: All techniques blocked
+    → slow-rate attack (1 req / 10s)
+    → rotate User-Agent pool (500 agents)
+    → fragmented payload delivery
+    → alternate HTTP method testing (PUT/PATCH/DELETE)
+    → output: partial findings + WAF bypass recommendations
+
+4.7 EBSS Scoring Engine (Python)
+The Extended Behaviour-Based Security Score combines CVSS base metrics with confirmed runtime evidence. It updates progressively throughout the assessment — the dashboard shows the score climbing in real time as findings accumulate.
+
+EBSS = min( CVSS_Base + (Behaviour_Weight × Behaviour_Severity) + (Exploit_Confirmed × 1.5) , 10.0 )
+
+Component
+Formula Role
+Value Range
+Determination Method
+CVSS_Base
+Starting anchor score
+0.0 – 10.0
+NVD lookup for matched CVE(s); max across all findings
+Behaviour_Severity
+ML-observed runtime behaviour weight
+Normal=1, Suspicious=3, Anomalous=6, Critical=9
+Model 1 classification output, worst observed class
+Behaviour_Weight (W)
+Learned scaling coefficient
+0.3 – 0.8
+Regression trained on labeled CVE outcomes vs real exploitability
+Exploit_Confirmed
+Binary bonus for confirmed exploit
+0 or 1
+Attack Orchestrator confirmed successful extraction/bypass
+1.5 Bonus
+Reality premium — theory became fact
+Fixed constant
+Adds severity when theoretical CVE becomes confirmed exploit
+min(..., 10.0)
+Score ceiling
+Capped at 10.0
+Prevents artificial inflation above maximum
+
+Progressive Scoring: After each attack round completes, the scoring engine recalculates EBSS and pushes an update to the ebss-updates Redis stream. The dashboard displays a live gauge rising from 0 to final score throughout the assessment. This is a key UX differentiator for conference demos.
+
+5. Docker Compose Architecture
+5.1 Service Map
+  docker-compose.yml — Complete Service Definition
+  ═══════════════════════════════════════════════════════════════════════
+
+  services:
+
+    api-gateway:          # Go — entry point, consent form, session manager
+      ports: [8080:8080]  # participant-facing web UI
+      depends_on: [redis]
+
+    web-dashboard:        # Go + HTMX — live attack visualization
+      ports: [8080]       # served through api-gateway
+      SSE stream from Redis → client browser
+
+    recon-engine:         # Go — port scan, HTTP fingerprint, TLS audit
+      depends_on: [redis]
+      writes: recon-results stream
+
+    ollama:               # Ollama — local LLM inference server
+      ports: [11434]      # internal only
+      model: llama3.2:3b  # pulled on first run (~2GB)
+      resources: {memory: 4GB}
+
+    llm-classifier:       # Python — calls Ollama, platform fingerprinting
+      reads:  recon-results
+      writes: platform-profile
+
+    nvd-service:          # Python — CVE lookup, EPSS, KEV, ExploitDB
+      reads:  platform-profile
+      writes: nvd-matches
+      volumes: [nvd-data:/data]  # local NVD SQLite index
+
+    attack-orchestrator:  # Go — wraps Kali tools as subprocesses
+      reads:  attack-decisions
+      writes: attack-results
+      volumes: [kali-tools:/tools]  # shared Kali sidecar volume
+
+    kali-sidecar:         # kalilinux/kali-rolling base image
+      # Pre-installed: sqlmap, hydra, nuclei, nmap, nikto,
+      #   gobuster, testssl.sh, arjun, wpscan, whatweb
+      # Shared as volume mount to attack-orchestrator
+
+    ml-engine:            # Python — Model 1 + Model 2 + SHAP
+      reads:  attack-results, nvd-matches
+      writes: ml-tags, attack-decisions, shap-outputs
+
+    scoring-engine:       # Python — EBSS calculation + PDF generation
+      reads:  ml-tags, attack-results, nvd-matches
+      writes: ebss-updates, final-report
+
+    redis:                # Redis 7 — central message bus
+      ports: [6379:6379]  # internal only
+
+    redisinsight:         # Redis GUI — full stream monitor
+      ports: [8001:8001]  # developer/demo visibility
+
+  volumes:
+    nvd-data:    # persists NVD SQLite index across restarts
+    kali-tools:  # Kali tool binaries shared between containers
+
+5.2 Redis Stream Schema — Complete Definition
+Stream Name
+Producer
+Consumer(s)
+Key Fields
+Purpose
+recon-results
+recon-engine
+llm-classifier, nvd-service
+ports, services, headers, errors, waf, tls
+Raw recon data for platform classification
+platform-profile
+llm-classifier
+nvd-service, ml-engine
+web_server, backend, database, frontend, confidence
+Structured platform fingerprint from local LLM
+nvd-matches
+nvd-service
+ml-engine, scoring-engine
+cves[], epss, kev_flags, exploit_db_ids, attack_categories
+CVE intelligence for attack grounding
+attack-decisions
+ml-engine (M2)
+attack-orchestrator
+attack_type, tool, params, priority, cve_id, reasoning
+Next attack instruction + justification
+attack-results
+attack-orchestrator
+ml-engine (M1)
+raw_response, status, timing, body_delta, tool_output
+Raw evidence from each attack execution
+ml-tags
+ml-engine (M1)
+ml-engine (M2), scoring-engine
+tag_vector, confidence_scores, shap_values
+Vulnerability classification with explainability
+shap-outputs
+ml-engine (M1)
+scoring-engine (for PDF)
+feature_importances, waterfall_data, prediction
+SHAP explainability data per classification
+ebss-updates
+scoring-engine
+web-dashboard
+current_score, delta, trigger_event, evidence_count
+Progressive live EBSS score stream
+session-state
+api-gateway
+web-dashboard, all services
+phase, progress_pct, active_attack, findings_count
+Session lifecycle and progress tracking
+final-report
+scoring-engine
+api-gateway (download)
+pdf_path, ebss_final, findings[], remediation[]
+Complete assessment report artifact
+
+6. Web Dashboard — UI Wireframes
+6.1 Screen 1 — Entry, Consent & Scope Configuration
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │  ▌SPECTRE▐  Security Penetration Engine                              │
+  │  Adaptive Vulnerability Assessment Platform  v2.0                    │
+  ├──────────────────────────────────────────────────────────────────────┤
+  │                                                                      │
+  │   STEP 1: TARGET CONFIGURATION                                       │
+  │   ─────────────────────────────────────────────────────────────────  │
+  │   Target URL    [ https://my-sandboxed-app.example.com           ]   │
+  │   Scope         [ ● Web + Server   ○ Web Only   ○ Server Only   ]   │
+  │   Intensity     [ ○ Light   ● Standard   ○ Thorough             ]   │
+  │   Time Limit    [ 20 mins ▼ ]                                        │
+  │                                                                      │
+  │   STEP 2: ENVIRONMENT CONFIRMATION                                   │
+  │   ─────────────────────────────────────────────────────────────────  │
+  │   ☐ This is a SANDBOXED test environment (not production)            │
+  │   ☐ I am using a FAKE / MOCK database — no real data at risk         │
+  │   ☐ I am the owner or have WRITTEN AUTHORIZATION to test this app    │
+  │   ☐ I understand SPECTRE may generate significant server load        │
+  │   ☐ I accept full responsibility for the test scope defined above    │
+  │                                                                      │
+  │   STEP 3: PARTICIPANT INFO (for report)                              │
+  │   ─────────────────────────────────────────────────────────────────  │
+  │   Name          [ _________________________ ]                        │
+  │   Organization  [ _________________________ ]                        │
+  │   App Tech Stack (optional hint)  [ ____________ ]                   │
+  │                                                                      │
+  │   [ Checklist incomplete — complete above to enable ]                │
+  │   ████████████████████████████   [ ▶ START ASSESSMENT ]             │
+  │                                                                      │
+  └──────────────────────────────────────────────────────────────────────┘
+
+6.2 Screen 2 — Live Assessment Dashboard (Active State)
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │ ▌SPECTRE▐  │  target.example.com  │  ● LIVE  │  Phase 3/6: ATTACKING    │
+  ├─────────────────────────┬────────────────────────────────────────────────┤
+  │  EBSS SCORE             │  LIVE ATTACK TIMELINE                          │
+  │                         │                                                │
+  │                         │  14:23:01  [RECON]    Port scan complete        │
+  │      7.8 / 10           │  14:23:45  [CLASSIFY] nginx:1.18 + Node + MySQL │
+  │  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░  │  14:23:48  [NVD]      CVE-2021-3129 matched    │
+  │    HIGH SEVERITY        │  14:23:50  [ATTACK]   SQLi probe → endpoint /s  │
+  │                         │  14:23:51  [MODEL 1]  sql-injectable (0.94 cf)  │
+  │  SCORE BREAKDOWN:       │  14:23:51  [SHAP]     body_delta top feature    │
+  │  CVSS Base    =  7.5    │  14:23:52  [MODEL 2]  → escalate: SQLMap full   │
+  │  Behaviour  + 0.8       │  14:24:38  [EXPLOIT]  SQLMap: users tbl dumped  │
+  │  Confirmed  + 1.5       │  14:24:38  [EBSS]     Score updated → 7.8  ▲   │
+  │             ─────       │  14:24:40  [MODEL 2]  → next: brute force auth  │
+  │  EBSS       = 7.8       │  14:24:41  [ATTACK]   Hydra on /login...        │
+  │                         │                                                │
+  ├─────────────────────────┤                                                │
+  │  PHASE TRACKER          ├────────────────────────────────────────────────┤
+  │  ✓ 1. Recon        12s  │  FINDINGS PANEL                                │
+  │  ✓ 2. Classify     8s   │                                                │
+  │  ✓ 3. CVE Match    3s   │  🔴 SQL Injection (CRITICAL, Confirmed)         │
+  │  ▶ 4. Attack  7m 22s    │     CVE-2021-3129 · CVSS 9.8 · KEV: Yes        │
+  │  ○ 5. Score             │  🟠 Verbose Stack Traces (HIGH)                 │
+  │  ○ 6. Report            │  🟠 Missing HSTS Header (HIGH)                  │
+  │                         │  🟡 IDOR Possible /file?id= (MEDIUM, Testing)   │
+  │  [ ■ STOP TEST ]        │  🟢 Rate Limiting Active (LOW — partial cover)  │
+  └─────────────────────────┴────────────────────────────────────────────────┘
+
+6.3 Screen 3 — Assessment Complete & Report
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │  ▌SPECTRE▐  Assessment Complete  │  target.example.com                   │
+  ├──────────────────────────────────────────────────────────────────────────┤
+  │                                                                          │
+  │   FINAL EBSS SCORE:  7.8 / 10  ── HIGH                                  │
+  │   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░  Duration: 22m 14s  │  Attacks Run: 47           │
+  │                                                                          │
+  │  ┌───────────────────────────────────────────────────────────────────┐   │
+  │  │ #1  SQL Injection — CRITICAL                               CVE ✓ │   │
+  │  │     CVE-2021-3129 · CVSS 9.8 · Confirmed: SQLMap dumped DB       │   │
+  │  │     Fix: Parameterized queries. ORM validation. Input sanitize.   │   │
+  │  │     SHAP: body_delta (0.38) + sql_pattern (0.31) drove detection  │   │
+  │  ├───────────────────────────────────────────────────────────────────┤   │
+  │  │ #2  Brute Force — HIGH                                    Conf ✓ │   │
+  │  │     No rate limiting on /login · Hydra cracked test creds         │   │
+  │  │     Fix: Rate limiting. Account lockout. CAPTCHA.                 │   │
+  │  ├───────────────────────────────────────────────────────────────────┤   │
+  │  │ #3  IDOR on /api/file?id= — MEDIUM                       Partial │   │
+  │  │     IDs 1-47 accessible without auth check                        │   │
+  │  │     Fix: Ownership validation on every resource access            │   │
+  │  ├───────────────────────────────────────────────────────────────────┤   │
+  │  │ #4  Missing Security Headers — MEDIUM                    Info    │   │
+  │  │     HSTS, CSP, X-Frame-Options absent                             │   │
+  │  │     Fix: Add security headers (5 min nginx config change)         │   │
+  │  └───────────────────────────────────────────────────────────────────┘   │
+  │                                                                          │
+  │   [ ⬇ DOWNLOAD PDF REPORT ]   [ VIEW SHAP CHARTS ]   [ RAW LOGS ]       │
+  │                                                                          │
+  └──────────────────────────────────────────────────────────────────────────┘
+
+7. Data Flow Diagrams
+7.1 DFD Level 0 — System Context Diagram
+                  ┌──────────────────────────────────┐
+  Participant ───►│                                  │──► PDF Report + EBSS
+  (URL + Consent) │          SPECTRE SYSTEM          │
+                  │                                  │──► Live Dashboard
+                  └──────────┬────────┬──────────────┘
+                             │        │
+                  ┌──────────▼──┐  ┌──▼──────────┐  ┌─────────────┐
+                  │ Target App  │  │  NVD / EPSS │  │ Ollama LLM  │
+                  │ (sandboxed) │  │  CVE Feeds  │  │ (local)     │
+                  └─────────────┘  └─────────────┘  └─────────────┘
+
+7.2 DFD Level 1 — Internal Process Flow
+  Participant Input
+       │ (URL, scope, consent)
+  ┌────▼────────────┐
+  │   Recon Engine  │──recon-results──►┌─────────────────────┐
+  └─────────────────┘                  │  LLM Classifier     │
+                                       │  (Ollama local)     │
+                                       └────────┬────────────┘
+                                                │ platform-profile
+                                       ┌────────▼────────────┐
+                                       │  NVD CVE Service    │
+                                       └────────┬────────────┘
+                                                │ nvd-matches
+                    ┌───────────────────────────▼─────────────────┐
+                    │              ML ENGINE                        │
+                    │                                               │
+                    │  nvd-matches ──► Model 2 ──► attack-decisions │
+                    │                    ▲                          │
+                    │                    │ ml-tags                  │
+                    │  attack-results ──► Model 1 ──► ml-tags        │
+                    │                    │                          │
+                    │                    └── SHAP ──► shap-outputs  │
+                    │                                               │
+                    │         [CLOSED FEEDBACK LOOP]                │
+                    └──────────────────┬──────────────────────────--┘
+                                       │
+                    ┌──────────────────▼──────────────────────────┐
+                    │  Attack Orchestrator                          │
+                    │  (Kali tools: SQLMap/Hydra/Nuclei/Nmap)      │
+                    └──────────────────┬──────────────────────────┘
+                                       │ attack-results
+                    ┌──────────────────▼──────────────────────────┐
+                    │  Scoring Engine                               │
+                    │  EBSS = f(CVSS, Behaviour, Exploit)          │
+                    │  → ebss-updates (live) → final-report (PDF)  │
+                    └──────────────────────────────────────────────┘
+
+7.3 DFD Level 2 — ML Feedback Loop Detail
+  Attack Orchestrator fires attack_n
+         │
+         │ attack-results stream
+         ▼
+  ┌─────────────────────────────────────────────────────┐
+  │  MODEL 1 (Response Classifier)                      │
+  │                                                     │
+  │  Feature Extraction:                                │
+  │    status_code, response_time, body_delta,          │
+  │    error_keywords, sql_patterns, redirect_count,    │
+  │    rate_limit_signal, auth_failure_count            │
+  │                                                     │
+  │  Random Forest → Prediction + Confidence            │
+  │  SHAP → Feature importance waterfall                │
+  └──────────────────────────┬──────────────────────────┘
+                             │ ml-tags stream
+                             ▼
+  ┌─────────────────────────────────────────────────────┐
+  │  MODEL 2 (Attack Decision Engine)                   │
+  │                                                     │
+  │  Inputs:                                            │
+  │    ml-tags (current classification)                 │
+  │    attack_history (what has been tried)             │
+  │    nvd-matches (CVE priority list)                  │
+  │    session_context (time remaining, scope)          │
+  │                                                     │
+  │  Decision Tree traversal                            │
+  │  → attack_type + tool + params + priority + cve_id  │
+  └──────────────────────────┬──────────────────────────┘
+                             │ attack-decisions stream
+                             ▼
+  Attack Orchestrator fires attack_n+1
+  (informed by what attack_n revealed)
+
+8. Rigorous Evaluation Plan
+Critical note: The previous AIVSS report had a vague evaluation plan that would not survive peer review. This section defines a precise, statistically valid evaluation methodology that can be directly translated into the paper's experimental section.
+
+8.1 Benchmark Targets (5 Canonical + 2 Live)
+Target
+Type
+Why Chosen
+Known Vulnerabilities
+Ground Truth Source
+DVWA (Damn Vulnerable Web App)
+Web App (PHP+MySQL)
+Industry standard, well documented
+SQLi, XSS, CSRF, file upload, IDOR
+DVWA difficulty levels + CVE list
+OWASP Juice Shop
+Web App (Node+Angular)
+Modern stack, OWASP official
+80+ intentional vulnerabilities
+Juice Shop challenge map
+WebGoat
+Web App (Java+Spring)
+Enterprise stack coverage
+Injection, broken auth, XXE, SSRF
+WebGoat lesson mapping
+Metasploitable 3
+Server + Web App
+Multi-service, realistic attack surface
+15+ services, 20+ CVEs
+Metasploitable3 documentation
+Custom Node+MySQL Sandbox
+Web App (Node+Express+MySQL)
+Our own stack — zero bias
+Seeded: SQLi, brute, IDOR, JWT flaw
+Self-documented findings
+Conference Participant App #1
+Real app (unknown stack)
+Live validation — real world test
+Unknown — to be discovered
+Assessment output = ground truth
+Conference Participant App #2
+Real app (unknown stack)
+Live validation — real world test
+Unknown — to be discovered
+Assessment output = ground truth
+
+8.2 Metrics — Precise Definitions
+Metric
+Definition
+Target Value
+Measurement Method
+Attack Success Rate
+% of ground truth vulnerabilities correctly confirmed by SPECTRE
+Target > 80%
+Confirmed findings / total known vulnerabilities in target
+Time to First Exploit
+Seconds from assessment start to first confirmed exploitation
+Target < 300s
+Timestamp of first exploit-confirmed event in session log
+EBSS vs EPSS Correlation
+Pearson correlation between EBSS and EPSS exploit probability
+Target > 0.75
+Compare EBSS output to NIST EPSS scores for matched CVEs
+Model 1 F1-Score
+Harmonic mean of precision and recall across all vulnerability tags
+Target > 0.90
+scikit-learn classification_report on held-out 20% test set
+Platform Classification Accuracy
+% of correctly identified tech stacks (server+backend+db)
+Target > 95%
+LLM classifier output vs documented stack on 15 test targets
+SHAP Stability
+Variance of top feature across 5 identical runs of same input
+Target < 0.05
+Run Model 1 on same input 5x, measure SHAP top-feature std dev
+False Positive Rate
+% of reported vulnerabilities that don't actually exist
+Target < 10%
+Manual verification of each finding against target documentation
+Adaptive vs Random Ordering
+Attack success rate: adaptive (SPECTRE) vs random attack order
+Target: SPECTRE > 15% better
+A/B test: SPECTRE decisions vs random attack sequence baseline
+
+8.3 Baseline Comparisons
+SPECTRE is compared against three baselines. All run on identical targets with identical time budgets.
+	•	Baseline 1 — Nuclei with random attack ordering: same tool library, no adaptive selection
+	•	Baseline 2 — OWASP ZAP automated scan: industry standard free scanner
+	•	Baseline 3 — Static CVSS scoring only: simulates using NVD data without any runtime testing
+
+8.4 Statistical Validation
+	•	Wilcoxon signed-rank test on attack success rates across 5 targets (paired, non-parametric)
+	•	Cohen's d effect size to quantify practical significance, not just statistical significance
+	•	95% confidence intervals on all reported metric values
+	•	All experiments run 3 times per target, report mean ± standard deviation
+
+8.5 Public Dataset Release
+  HUGGING FACE DATASET RELEASE (Month 4)
+  ──────────────────────────────────────────────────────────────
+  Content:    10,000+ labeled HTTP attack trace records
+  Labels:     Vulnerability tags (12 classes, multi-label)
+  Sources:    DVWA, Juice Shop, WebGoat simulations + custom
+  Format:     Parquet + CSV + JSON (3 formats)
+  Splits:     70% train / 10% val / 20% test
+  SHAP data:  Feature importance metadata per record
+  License:    CC-BY 4.0
+  Impact:     Enables reproducibility + independent research
+              Citations independent of paper
+
+9. Six-Month Implementation Roadmap
+
+1
+Month 1
+Foundation — Go Recon Engine + Redis Pipeline + Basic Dashboard
+	•	Initialize public GitHub repo (MIT license) — open source from day one
+	•	Docker Compose skeleton: redis, redisinsight, api-gateway, recon-engine
+	•	Go recon engine: concurrent port scan, HTTP header harvest, TLS audit
+	•	Redis stream producer/consumer wrappers in Go (reusable library)
+	•	Basic web dashboard (Go + HTMX): session creation, live log stream display
+	•	Consent form UI with scope configuration
+	•	End-to-end test: recon results flowing through Redis into dashboard on DVWA
+	•	Deliverable: recon JSON visible in RedisInsight, consent flow working
+
+2
+Month 2
+Attack Library + Orchestrator + Kali Sidecar
+	•	Kali Linux base Docker image with all tools pre-installed and volume-shared
+	•	Go attack orchestrator: subprocess management with timeout + output capture
+	•	Integrate SQLMap, Hydra, Nuclei, Nmap, Nikto, Gobuster, testssl.sh as modules
+	•	Custom Go scripts: IDOR scanner, JWT manipulator, header injection prober
+	•	Hardcoded decision rules (pre-ML) to test full attack chain on DVWA
+	•	Attack results flowing to Redis attack-results stream
+	•	Full end-to-end pipeline test (no ML yet): recon → attack → results
+	•	Deliverable: Attack chain running on DVWA, all tool outputs in Redis
+
+3
+Month 3
+Local LLM Classifier + NVD Intelligence Service
+	•	Ollama Docker container with Llama-3.2-3B model — fully local inference
+	•	Python LLM classifier service: reads recon-results, calls Ollama, writes platform-profile
+	•	Validate classification accuracy on 15 known tech stack combinations
+	•	NVD JSON feed downloader + SQLite indexer (automated weekly refresh)
+	•	CPE matching logic: exact version-to-CVE lookup with confidence scoring
+	•	EPSS score integration + CISA KEV catalog cross-reference
+	•	ExploitDB offline mirror integration + attack category mapping table
+	•	Connect platform profile → NVD matches → attack decision input
+	•	Deliverable: Platform correctly identified for all test targets, CVEs matched
+
+4
+Month 4
+ML Model 1 + SHAP + Dataset Release
+	•	Generate 10,000+ labeled training records via automated DVWA/JuiceShop/WebGoat runs
+	•	Feature extraction pipeline (12 features) + multi-label annotation
+	•	Train Random Forest classifier (scikit-learn) with hyperparameter grid search
+	•	Target: F1 > 0.90 on 20% held-out test set across all 12 tag classes
+	•	SHAP integration: waterfall charts per classification decision
+	•	Deploy Model 1 as Python microservice reading attack-results stream
+	•	Release dataset on HuggingFace: 10,000+ records, Parquet + CSV + JSON
+	•	Deliverable: Model 1 live, F1 > 0.90, SHAP outputs in Redis, dataset public
+
+5
+Month 5
+Model 2 Decision Engine + EBSS + PDF Report + Full Loop
+	•	Build NVD-informed decision tree for Model 2 (all attack priority rules)
+	•	Wire Model 2 decisions to attack-orchestrator via attack-decisions stream
+	•	Implement EBSS scoring engine with progressive real-time updates
+	•	PDF report generator (ReportLab): findings, EBSS score, SHAP charts, remediation
+	•	Complete closed-loop test on all 5 benchmark targets
+	•	Measure baseline metrics: F1, attack success rate, time-to-first-exploit
+	•	Run comparison against Nuclei random ordering + ZAP baselines
+	•	Dashboard polish: EBSS gauge, phase tracker, findings panel, SHAP chart view
+	•	Deliverable: Full adaptive loop working, EBSS output, PDF report generated
+
+6
+Month 6
+Live Testing + Statistical Evaluation + Paper Writing + Demo
+	•	Recruit 5+ participants with sandboxed apps + fake DBs for live testing
+	•	Run full statistical evaluation: Wilcoxon tests, Cohen's d, confidence intervals
+	•	Write conference paper: Abstract, Introduction, Related Work, System, Evaluation, Conclusion
+	•	Create 5-minute demo video for DEF CON Arsenal submission
+	•	Polish conference demo UX: one-click start, smooth live dashboard, clean PDF output
+	•	Submit to: IEEE S&P Workshop (primary), ACM CODASPY (secondary), arXiv preprint
+	•	DEF CON Arsenal application with demo video + GitHub link + HuggingFace dataset
+	•	Deliverable: Submitted paper + conference-ready demo + public GitHub + dataset
+
+9.1 Milestone Summary
+Month
+Milestone
+Key Deliverable
+Success Criterion
+Month 1
+Recon + Redis + Dashboard
+Go recon pipeline live
+Recon JSON in RedisInsight < 90s
+Month 2
+Attack Library + Orchestrator
+Full attack chain on DVWA
+All tools execute, outputs in Redis
+Month 3
+Local LLM + NVD Service
+Platform fingerprint + CVEs matched
+Classification accuracy > 95% on 15 stacks
+Month 4
+Model 1 + SHAP + Dataset
+RF classifier + HuggingFace release
+F1 > 0.90, dataset public
+Month 5
+Model 2 + EBSS + PDF
+Full adaptive loop + report output
+EBSS calculated, PDF generated
+Month 6
+Evaluation + Paper + Demo
+Submitted conference paper
+Wilcoxon p < 0.05 vs baselines
+
+10. Technology Stack — Complete Reference
+Layer
+Technology
+Version
+Purpose
+Why This Choice
+Core Services
+Go
+1.22
+Recon engine, Attack orchestrator, API gateway, Dashboard
+Goroutine concurrency for parallel recon + subprocess management
+AI/ML
+Python
+3.11
+ML engine, LLM classifier, NVD service, Scoring
+Best ML ecosystem — sklearn, pandas, numpy, shap
+Local LLM
+Ollama + Llama-3.2
+3B params
+Platform fingerprinting
+Runs on 8GB RAM, offline, zero API cost, no refusal risk
+ML Framework
+scikit-learn
+1.4+
+Model 1 Random Forest training + inference
+Proven, fast, SHAP-compatible, fully exportable
+Explainability
+SHAP
+0.45+
+Model 1 decision explanation
+Industry standard, waterfall + force plots for PDF
+Message Bus
+Redis 7
+7.2
+All inter-service communication via Streams
+Low latency pub/sub, persistent streams, observable
+Stream Monitor
+RedisInsight
+2.x
+Live visualization of all Redis streams
+Built-in UI, port 8001, critical for demo and debugging
+Attack Tools
+Kali Linux
+kali-rolling
+SQLMap, Hydra, Nuclei, Nmap, Nikto, Gobuster...
+Industry standard, comprehensive, regularly updated
+Web UI
+Go + HTMX
+HTMX 1.9
+Live dashboard via Server-Sent Events
+No JS framework overhead, SSE pushes Redis updates to browser
+Containers
+Docker Compose
+v2.x
+Full system orchestration, single-command deploy
+Portable, reproducible, conference-demo friendly
+CVE Intelligence
+NVD JSON Feeds
+Daily refresh
+CVE database, CVSS scores, CPE matching
+Free, authoritative, used by all major security tools
+Exploit Probability
+EPSS API
+v3
+Prioritize CVEs most likely exploited
+Outperforms CVSS alone for real-world risk prediction
+Known Exploits
+CISA KEV Catalog
+Weekly refresh
+Flag actively exploited CVEs
+Highest priority attack targets
+Report Generation
+ReportLab
+4.x
+PDF report with SHAP charts + findings
+Programmatic, embeds images, professional output
+Dataset Hosting
+HuggingFace Datasets
+—
+Public labeled attack trace dataset
+Maximizes research reuse and citation impact
+Version Control
+GitHub
+—
+Public MIT-licensed open source repo
+Open from Month 2 for community and conference credibility
+
+11. Research Contribution Claims
+11.1 Primary Contributions
+The following four claims constitute the novel research contributions of SPECTRE. Each is verifiable through the evaluation metrics defined in Section 8.
+
+	•	Closed-Loop Adaptive Attack Sequencing with Explainable ML
+SPECTRE is the first system to combine Random Forest classification with SHAP explainability in a closed-loop penetration testing pipeline. Unlike LLM-based systems (black boxes), every attack decision can be traced to specific observable features. This explainability is verifiable, reproducible, and publishable.
+
+	•	NVD/CVE-Grounded Attack Prioritization via CPE Matching
+Every attack SPECTRE executes is semantically linked to a specific CVE record via CPE version matching, EPSS exploit probability, and KEV active exploitation status. No existing open-source adaptive pentest tool provides this three-signal CVE grounding.
+
+	•	EBSS: A Runtime-Evidence-Augmented Vulnerability Score
+EBSS extends CVSS with confirmed exploit evidence and ML-classified behaviour severity. The behaviour weight W is learned via regression on labeled outcomes — not an arbitrary constant. EBSS demonstrably correlates with real-world exploitability (EPSS) better than CVSS alone.
+
+	•	Consent-First, Fully Reproducible, Single-Command Deployment
+SPECTRE is the only adaptive penetration testing system designed as a consent-first conference demo tool. A single docker compose up command deploys the full system including local LLM, all attack tools, and live dashboard. This deployment model enables educational use cases that xOffense, PentestGPT, and ADAPT cannot serve.
+
+11.2 Honest Limitations
+Transparent acknowledgement of limitations strengthens a paper with reviewers. SPECTRE's current limitations are:
+	•	Attack sophistication is limited vs. LLM multi-agent systems like xOffense — SPECTRE prioritizes explainability over raw reasoning depth
+	•	Model 2 is a deterministic expert system, not a learned policy — Reinforcement Learning upgrade is a planned future direction
+	•	v1 scope excludes binary/desktop software and direct database port exploitation
+	•	Local LLM (3B params) may misclassify unusual or obfuscated tech stacks — external API fallback planned for v2
+
+12. Legal & Ethical Framework
+SPECTRE operates ONLY on sandboxed environments with fake databases, explicitly consented to by the participant.
+
+12.1 Consent Architecture
+	•	Five-item digital consent checklist — all items must be checked before assessment starts
+	•	Consent record stored with session ID, timestamp, and participant details
+	•	Scope is locked to the provided URL domain — no lateral movement to adjacent hosts
+	•	Assessment auto-terminates at time limit or if participant clicks stop
+	•	All session data (logs, raw responses) purged after PDF report is downloaded
+
+12.2 Safe Operation Guarantees
+	•	All attacks rate-limited to prevent genuine service disruption (configurable, default: standard)
+	•	Fake DB design: participant seeds clearly labelled dummy data before assessment — no real PII at risk
+	•	No real credentials, personal data, or sensitive information ever stored by SPECTRE
+	•	All tool executions run inside Docker containers — zero access to host system
+	•	Attack library excludes destructive payloads (DROP TABLE, rm -rf, etc.) — all attacks are read-only or reversible
+	•	Emergency kill switch on dashboard terminates all attack subprocesses immediately
+
+12.3 Conference Deployment Checklist
+Item
+Requirement
+Verification
+Consent form
+Participants sign digital consent before assessment
+Checkbox UI enforced in code
+Sandboxed target
+Participants confirm test environment
+Second checkbox UI
+Fake database
+Participants confirm no real data at risk
+Third checkbox UI
+Scope limitation
+Only provided URL tested, no host enumeration beyond scope
+Hardcoded URL scope filter in recon engine
+Data retention
+Session data purged after report download
+Scheduled Redis TTL + file cleanup
+Kill switch
+Participant can stop at any time
+Large visible STOP button on dashboard
+Network isolation
+Docker network only — no access to conference network outside scope
+Docker network config
+
+Appendix A — CVSS v3.1 Metrics Reference
+Metric
+Values
+Numeric Weight
+Attack Vector (AV)
+Network / Adjacent / Local / Physical
+0.85 / 0.62 / 0.55 / 0.20
+Attack Complexity (AC)
+Low / High
+0.77 / 0.44
+Privileges Required (PR)
+None / Low / High (Scope Unchanged)
+0.85 / 0.62 / 0.27
+Privileges Required (PR)
+None / Low / High (Scope Changed)
+0.85 / 0.68 / 0.50
+User Interaction (UI)
+None / Required
+0.85 / 0.62
+Scope (S)
+Unchanged / Changed
+Affects formula multiplier
+Confidentiality (C)
+None / Low / High
+0.00 / 0.22 / 0.56
+Integrity (I)
+None / Low / High
+0.00 / 0.22 / 0.56
+Availability (A)
+None / Low / High
+0.00 / 0.22 / 0.56
+
+Appendix B — SPECTRE EBSS Behaviour Metrics
+Metric
+Measurement Source
+Severity Contribution
+SHAP Weight (estimated)
+HTTP Error Frequency (4xx/5xx)
+Response status codes
+High if > 20% of requests
+High — often top-1 feature
+Response Time Deviation
+Timing vs baseline
+High if > 5x baseline
+Medium — indicates stress
+Body Length Delta
+Response size vs baseline
+High if > 2x or < 0.5x
+High — data leakage signal
+SQL Keyword Match Score
+Error text analysis
+Critical if SQL syntax exposed
+Very high — direct evidence
+Stack Trace Presence
+Error body pattern match
+High — reveals code structure
+High — strong vulnerability signal
+Auth Failure Rate
+401/403 response frequency
+High if > 30 failures/60s
+Medium
+IDOR Access Pattern
+Sequential 200 responses
+Medium to high
+Medium — confirms access control gap
+Rate Limit Absence
+429/Retry-After absence
+Medium — amplifies other attacks
+Low standalone, high in combination
+
+
+
+▌SPECTRE▐  —  Designed by John Doe  ·  MIT Academy of Engineering, Pune  ·  2026
+
+This document is the sole original work of the author. All architecture, diagrams, system designs, and evaluation plans are original contributions.

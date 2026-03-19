@@ -1,0 +1,71 @@
+services:
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      - redis
+
+  recon-engine:
+    build:
+      context: .
+      dockerfile: recon-engine/Dockerfile
+    environment:
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      - redis
+
+  attack-orchestrator:
+    build:
+      context: .
+      dockerfile: attack-orchestrator/Dockerfile
+    environment:
+      - REDIS_ADDR=redis:6379
+      - ML_ENGINE_URL=http://ml-engine:5001
+      - LLM_CLASSIFIER_URL=http://llm-classifier:5002
+      - SCORING_ENGINE_URL=http://scoring-engine:5003
+    depends_on:
+      - redis
+      - ml-engine
+      - llm-classifier
+      - scoring-engine
+
+  redis:
+    image: redis:7.2
+    ports:
+      - "6379:6379"
+
+  ml-engine:
+    build:
+      context: ./ml-engine
+    ports:
+      - "5001:5001"
+    environment:
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      - redis
+
+  llm-classifier:
+    build:
+      context: ./llm-classifier
+    ports:
+      - "5002:5002"
+    environment:
+      - REDIS_ADDR=redis:6379
+      - OLLAMA_URL=http://host.docker.internal:11434
+    depends_on:
+      - redis
+
+  scoring-engine:
+    build:
+      context: ./scoring-engine
+    ports:
+      - "5003:5003"
+    environment:
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      - redis

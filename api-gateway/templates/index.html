@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTRE — Security Assessment</title>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --border: #1e1e2e;
+            --accent: #00ff88;
+            --accent-dim: #00cc6e;
+            --text: #e0e0e0;
+            --text-dim: #888;
+            --danger: #ff4444;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+        .container { max-width: 700px; width: 100%; }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 2.5rem;
+            color: var(--accent);
+            letter-spacing: 8px;
+            text-shadow: 0 0 20px rgba(0,255,136,0.3);
+        }
+        .header p {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+        .section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .section h2 {
+            color: var(--accent);
+            font-size: 0.8rem;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+        input[type="text"], input[type="url"], select {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.9rem;
+            margin-bottom: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus, select:focus {
+            border-color: var(--accent);
+        }
+        .radio-group {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 14px;
+        }
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            color: var(--text);
+        }
+        .consent-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding: 10px;
+            border-radius: 4px;
+            background: var(--bg);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .consent-item:hover { background: #15151f; }
+        .consent-item input[type="checkbox"] {
+            margin-top: 3px;
+            accent-color: var(--accent);
+        }
+        .consent-item span { font-size: 0.85rem; line-height: 1.4; }
+        .btn-submit {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+        .btn-submit:hover {
+            background: var(--accent-dim);
+            box-shadow: 0 0 20px rgba(0,255,136,0.3);
+        }
+        .btn-submit:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>▌SPECTRE▐</h1>
+            <p>Security Penetration Engine with Closed-loop Threat Response &amp; Evaluation</p>
+        </div>
+
+        <form action="/api/session" method="POST" id="consentForm">
+            <div class="section">
+                <h2>Step 1 — Target Configuration</h2>
+                <label for="target_url">Target URL</label>
+                <input type="url" id="target_url" name="target_url" placeholder="https://my-sandboxed-app.example.com" required>
+
+                <label>Scope</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="scope" value="web+server" checked> Web + Server</label>
+                    <label><input type="radio" name="scope" value="web"> Web Only</label>
+                    <label><input type="radio" name="scope" value="server"> Server Only</label>
+                </div>
+
+                <label>Intensity</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="intensity" value="light"> Light</label>
+                    <label><input type="radio" name="intensity" value="standard" checked> Standard</label>
+                    <label><input type="radio" name="intensity" value="thorough"> Thorough</label>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Step 2 — Environment Confirmation</h2>
+                <div class="consent-item">
+                    <input type="checkbox" name="consent_sandbox" id="c1" onchange="checkConsent()">
+                    <span>This is a <strong>SANDBOXED</strong> test environment (not production)</span>
+                </div>
+                <div class="consent-item">
+                    <input type="checkbox" name="consent_fakedb" id="c2" onchange="checkConsent()">
+                    <span>I am using a <strong>FAKE / MOCK database</strong> — no real data at risk</span>
+                </div>
+                <div class="consent-item">
+                    <input type="checkbox" name="consent_auth" id="c3" onchange="checkConsent()">
+                    <span>I am the owner or have <strong>WRITTEN AUTHORIZATION</strong> to test this app</span>
+                </div>
+                <div class="consent-item">
+                    <input type="checkbox" name="consent_load" id="c4" onchange="checkConsent()">
+                    <span>I understand SPECTRE may generate <strong>significant server load</strong></span>
+                </div>
+                <div class="consent-item">
+                    <input type="checkbox" name="consent_responsibility" id="c5" onchange="checkConsent()">
+                    <span>I accept <strong>full responsibility</strong> for the test scope defined above</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Step 3 — Participant Info</h2>
+                <label for="participant_name">Name</label>
+                <input type="text" id="participant_name" name="participant_name" placeholder="Your name">
+
+                <label for="organization">Organization</label>
+                <input type="text" id="organization" name="organization" placeholder="Your organization">
+            </div>
+
+            <button type="submit" class="btn-submit" id="submitBtn" disabled>
+                Complete Consent Checklist to Start
+            </button>
+        </form>
+    </div>
+
+    <script>
+        function checkConsent() {
+            const boxes = document.querySelectorAll('input[type="checkbox"]');
+            const allChecked = Array.from(boxes).every(cb => cb.checked);
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = !allChecked;
+            btn.textContent = allChecked ? '▶ START ASSESSMENT' : 'Complete Consent Checklist to Start';
+        }
+    </script>
+</body>
+</html>
