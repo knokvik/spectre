@@ -229,3 +229,20 @@ func (c *Client) ReadStreamNonBlocking(ctx context.Context, stream string, lastI
 func (c *Client) Close() error {
 	return c.rdb.Close()
 }
+
+// Set stores a key-value pair in Redis with an expiration duration.
+// If expiration is 0, the key does not expire.
+func (c *Client) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	return c.rdb.Set(ctx, key, value, expiration).Err()
+}
+
+// SAdd inserts members into a Redis set and returns the count of newly added
+// members.
+func (c *Client) SAdd(ctx context.Context, key string, members ...interface{}) (int64, error) {
+	return c.rdb.SAdd(ctx, key, members...).Result()
+}
+
+// Expire applies a TTL to an existing key.
+func (c *Client) Expire(ctx context.Context, key string, expiration time.Duration) error {
+	return c.rdb.Expire(ctx, key, expiration).Err()
+}
