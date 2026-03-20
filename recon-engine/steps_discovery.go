@@ -118,20 +118,20 @@ func jsDiscovery(ctx context.Context, sessionID, targetURL string) ([]string, []
 
 	// Detect framework hints from JS filenames and page content
 	frameworkSignatures := map[string][]string{
-		"vue.js":      {"vue.min.js", "vue.js", "vue.runtime", "vue.global"},
-		"react":       {"react.min.js", "react.js", "react-dom", "react.production"},
-		"angular":     {"angular.min.js", "angular.js", "zone.js", "ng-", "angular.io"},
-		"jquery":      {"jquery.min.js", "jquery.js", "jquery-"},
-		"axios":       {"axios.min.js", "axios.js"},
-		"lodash":      {"lodash.min.js", "lodash.js"},
-		"bootstrap":   {"bootstrap.min.js", "bootstrap.js", "bootstrap.bundle"},
-		"next.js":     {"_next/", "__next", "next/"},
-		"nuxt":        {"_nuxt/", "nuxt.js"},
-		"svelte":      {"svelte", "__svelte"},
-		"ember":       {"ember.min.js", "ember.js"},
-		"backbone":    {"backbone.min.js", "backbone.js"},
-		"express":     {"express"},
-		"node":        {"node_modules", "node"},
+		"vue.js":    {"vue.min.js", "vue.js", "vue.runtime", "vue.global"},
+		"react":     {"react.min.js", "react.js", "react-dom", "react.production"},
+		"angular":   {"angular.min.js", "angular.js", "zone.js", "ng-", "angular.io"},
+		"jquery":    {"jquery.min.js", "jquery.js", "jquery-"},
+		"axios":     {"axios.min.js", "axios.js"},
+		"lodash":    {"lodash.min.js", "lodash.js"},
+		"bootstrap": {"bootstrap.min.js", "bootstrap.js", "bootstrap.bundle"},
+		"next.js":   {"_next/", "__next", "next/"},
+		"nuxt":      {"_nuxt/", "nuxt.js"},
+		"svelte":    {"svelte", "__svelte"},
+		"ember":     {"ember.min.js", "ember.js"},
+		"backbone":  {"backbone.min.js", "backbone.js"},
+		"express":   {"express"},
+		"node":      {"node_modules", "node"},
 	}
 
 	hints := []string{}

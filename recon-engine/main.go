@@ -21,20 +21,23 @@ var sessionCancels sync.Map
 // ─── Result structs matching the exact output schema ───
 
 type ReconResult struct {
-	SessionID     string                 `json:"session_id"`
-	TargetURL     string                 `json:"target_url"`
-	Scope         string                 `json:"scope"`
-	OpenPorts     []int                  `json:"open_ports"`
-	Services      map[string]string      `json:"services"`
-	Headers       map[string]interface{} `json:"headers"`
-	TLS           TLSResult              `json:"tls"`
-	WAF           WAFResult              `json:"waf"`
-	CMS           CMSResult              `json:"cms"`
-	DNS           DNSResult              `json:"dns"`
-	RobotsSitemap RobotsSitemapResult    `json:"robots_sitemap"`
-	JSFiles       []string               `json:"js_files"`
-	FrameworkHints []string              `json:"framework_hints"`
-	Errors        ErrorResult            `json:"errors"`
+	SessionID      string                 `json:"session_id"`
+	TargetURL      string                 `json:"target_url"`
+	Scope          string                 `json:"scope"`
+	OpenPorts      []int                  `json:"open_ports"`
+	Services       map[string]string      `json:"services"`
+	Headers        map[string]interface{} `json:"headers"`
+	TLS            TLSResult              `json:"tls"`
+	WAF            WAFResult              `json:"waf"`
+	CMS            CMSResult              `json:"cms"`
+	DNS            DNSResult              `json:"dns"`
+	RobotsSitemap  RobotsSitemapResult    `json:"robots_sitemap"`
+	JSFiles        []string               `json:"js_files"`
+	FrameworkHints []string               `json:"framework_hints"`
+	Errors         ErrorResult            `json:"errors"`
+	Classification ClassificationResult   `json:"classification"`
+	RASM           RASMResult             `json:"rasm"`
+	Consent        ConsentRequirement     `json:"consent"`
 }
 
 type TLSResult struct {
@@ -78,6 +81,38 @@ type ErrorResult struct {
 	StackSamples     []string `json:"stack_samples"`
 }
 
+type BackendEndpoint struct {
+	SessionID          string  `json:"session_id"`
+	Event              string  `json:"event"`
+	DiscoveredEndpoint string  `json:"discovered_endpoint"`
+	Normalized         string  `json:"normalized"`
+	Source             string  `json:"source"`
+	Confidence         float64 `json:"confidence"`
+	APIType            string  `json:"api_type"`
+	Type               string  `json:"type"`
+	ParentTarget       string  `json:"parent_target"`
+	ScopeType          string  `json:"scope_type"`
+	Risk               string  `json:"risk"`
+	Reason             string  `json:"reason"`
+	Selectable         bool    `json:"selectable"`
+	Recommended        bool    `json:"recommended"`
+}
+
+type RASMResult struct {
+	Triggered           bool              `json:"triggered"`
+	Reason              string            `json:"reason"`
+	DiscoveredEndpoints []BackendEndpoint `json:"discovered_endpoints"`
+	ReviewEndpoints     []BackendEndpoint `json:"review_endpoints"`
+}
+
+type ConsentRequirement struct {
+	Required      bool     `json:"required"`
+	Reason        string   `json:"reason"`
+	Deployment    string   `json:"deployment"`
+	Message       string   `json:"message"`
+	DetectedItems []string `json:"detected_items"`
+}
+
 func main() {
 	log.Println("[recon-engine] starting...")
 
@@ -113,7 +148,7 @@ func main() {
 		scope, _ := msg.Data["scope"].(string)
 
 		if scope == "" {
-			scope = "web+server"
+			scope = "auto"
 		}
 
 		if targetURL == "" || sessionID == "" {
@@ -175,7 +210,17 @@ func newHTTPClient() *http.Client {
 
 // runRecon launches all 10 recon goroutines concurrently for a single target.
 func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
+	effectiveScope := scope
+	if effectiveScope == "" || effectiveScope == "auto" {
+		effectiveScope = "web+server"
+	}
+
 	publishEvent(ctx, sessionID, "recon", "start", fmt.Sprintf("Starting reconnaissance on %s (Scope: %s)", targetURL, scope), nil)
+	publishServiceMetric(ctx, sessionID, "recon-engine", "recon", "Starting concurrent reconnaissance", map[string]interface{}{
+		"target_url": targetURL,
+		"scope":      effectiveScope,
+		"load_pct":   68,
+	})
 
 	parsedURL, err := url.Parse(targetURL)
 	if err != nil {
@@ -211,7 +256,38 @@ func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
 	result.RobotsSitemap.Entries = []string{}
 	result.CMS.Hints = []string{}
 	result.Errors.StackSamples = []string{}
+	result.RASM.DiscoveredEndpoints = []BackendEndpoint{}
+	result.RASM.ReviewEndpoints = []BackendEndpoint{}
+	result.Scope = effectiveScope
+	result.Consent.DetectedItems = []string{}
+
+	// Auto Classification (Done synchronously or concurrently?)
+	// Let's do it concurrently, so it doesn't block the rest of the scan.
+	// But the prompt says "run immediately after receiving target_url".
 	var mu sync.Mutex
+	classResCh := make(chan ClassificationResult, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		classRes := classifyTarget(ctx, sessionID, targetURL)
+		mu.Lock()
+		result.Classification = classRes
+		mu.Unlock()
+		classResCh <- classRes
+	}()
+
+	if effectiveScope != "server" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			classRes := <-classResCh
+			rasm := runRASM(ctx, sessionID, targetURL, classRes)
+			mu.Lock()
+			result.RASM = rasm
+			mu.Unlock()
+		}()
+	}
 
 	// Step 1: DNS
 	wg.Add(1)
@@ -227,7 +303,7 @@ func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ports := scanPorts(ctx, sessionID, host, scope)
+		ports := scanPorts(ctx, sessionID, host, effectiveScope)
 		mu.Lock()
 		result.OpenPorts = ports
 		mu.Unlock()
@@ -239,7 +315,7 @@ func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
 	}()
 
 	// Step 4: Headers
-	if scope != "server" {
+	if effectiveScope != "server" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -263,7 +339,7 @@ func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
 	}()
 
 	// Step 6: WAF
-	if scope != "server" {
+	if effectiveScope != "server" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -275,7 +351,7 @@ func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
 	}
 
 	// Step 7: CMS
-	if scope != "server" {
+	if effectiveScope != "server" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -287,7 +363,7 @@ func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
 	}
 
 	// Step 8: robots + sitemap
-	if scope != "server" {
+	if effectiveScope != "server" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -299,7 +375,7 @@ func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
 	}
 
 	// Step 9: JS discovery
-	if scope != "server" {
+	if effectiveScope != "server" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -312,7 +388,7 @@ func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
 	}
 
 	// Step 10: Error pages
-	if scope != "server" {
+	if effectiveScope != "server" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -324,6 +400,18 @@ func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
 	}
 
 	wg.Wait()
+	originalClassification := result.Classification
+	result.Classification = refineClassification(result)
+	if result.Classification.Class != originalClassification.Class || result.Classification.Confidence != originalClassification.Confidence {
+		publishEvent(ctx, sessionID, "recon", "classification",
+			fmt.Sprintf("Refined classification to '%s' (confidence: %.2f) using server evidence", result.Classification.Class, result.Classification.Confidence),
+			map[string]interface{}{
+				"class":      result.Classification.Class,
+				"confidence": result.Classification.Confidence,
+				"details":    result.Classification.Details,
+			})
+	}
+	result.Consent = detectConsentRequirement(targetURL, result)
 	elapsed := time.Since(startTime)
 
 	// Publish final structured recon-results JSON
@@ -341,22 +429,49 @@ func runRecon(ctx context.Context, sessionID, targetURL, scope string) {
 	}
 
 	// Create and publish a small human-readable summary before completion
-	wafVendor := result.WAF.Vendor
-	if !result.WAF.Detected {
-		wafVendor = "None"
-	}
-	summaryMsg := fmt.Sprintf("📊 Recon Summary (Scope: %s): %d open ports | TLS: %s | WAF: %s | CMS: %s | JS Files: %d",
-		scope, len(result.OpenPorts), result.TLS.Version, wafVendor, result.CMS.Type, len(result.JSFiles))
+	summaryMsg := fmt.Sprintf("📊 Recon Summary (Scope: %s): %d open ports | TLS: %s | Class: %s (%.0f%%) | JS Files: %d | Backend APIs: %d",
+		effectiveScope, len(result.OpenPorts), result.TLS.Version, result.Classification.Class, result.Classification.Confidence*100, len(result.JSFiles), len(result.RASM.DiscoveredEndpoints))
 	publishEvent(ctx, sessionID, "recon", "summary", summaryMsg, nil)
+
+	if result.Consent.Required || len(result.RASM.ReviewEndpoints) > 0 {
+		message := result.Consent.Message
+		reason := result.Consent.Reason
+		deployment := result.Consent.Deployment
+		if message == "" {
+			message = "Endpoint discovery completed. Review the discovered scope and approve only the endpoints you want SPECTRE to test."
+		}
+		if reason == "" {
+			reason = "RASM discovered additional application endpoints that require user scope confirmation"
+		}
+		if deployment == "" {
+			deployment = "review"
+		}
+		publishEvent(ctx, sessionID, "consent-required", "infrastructure-consent", message, map[string]interface{}{
+			"required":         true,
+			"reason":           reason,
+			"deployment":       deployment,
+			"detected_items":   result.Consent.DetectedItems,
+			"review_endpoints": result.RASM.ReviewEndpoints,
+		})
+	}
 
 	// Publish recon-complete event
 	publishEvent(ctx, sessionID, "recon", "complete",
 		fmt.Sprintf("Reconnaissance complete in %s", elapsed.Round(time.Millisecond)),
 		map[string]interface{}{
-			"target_url":   targetURL,
-			"scope":        scope,
-			"elapsed_ms":   elapsed.Milliseconds(),
+			"target_url":        targetURL,
+			"scope":             effectiveScope,
+			"elapsed_ms":        elapsed.Milliseconds(),
+			"classification":    result.Classification.Class,
+			"backend_endpoints": len(result.RASM.DiscoveredEndpoints),
+			"consent_required":  result.Consent.Required,
 		})
+	publishServiceMetric(ctx, sessionID, "recon-engine", "recon", "Reconnaissance phase completed", map[string]interface{}{
+		"elapsed_ms":        elapsed.Milliseconds(),
+		"backend_endpoints": len(result.RASM.DiscoveredEndpoints),
+		"open_ports":        len(result.OpenPorts),
+		"load_pct":          34,
+	})
 
 	log.Printf("[recon-engine] recon complete for %s in %s", targetURL, elapsed.Round(time.Millisecond))
 }

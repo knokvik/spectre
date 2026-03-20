@@ -77,28 +77,56 @@ func parseServiceBanner(banner string, port int) string {
 		return "HTTP server"
 	}
 
-	if strings.Contains(lower, "ssh-")          { return extractFirst(banner, 40) }
-	if strings.Contains(lower, "mysql")         { return "mysql/" + extractVersion(banner) }
-	if strings.Contains(lower, "mariadb")       { return "mariadb/" + extractVersion(banner) }
-	if strings.Contains(lower, "postgresql")    { return "postgresql" }
-	if strings.Contains(lower, "smtp")          { return extractFirst(banner, 60) }
-	if strings.Contains(lower, "ftp")           { return extractFirst(banner, 60) }
-	if strings.Contains(lower, "redis")         { return "redis" }
-	if strings.Contains(lower, "mongodb")       { return "mongodb" }
-	if strings.Contains(lower, "elasticsearch") { return "elasticsearch" }
+	if strings.Contains(lower, "ssh-") {
+		return extractFirst(banner, 40)
+	}
+	if strings.Contains(lower, "mysql") {
+		return "mysql/" + extractVersion(banner)
+	}
+	if strings.Contains(lower, "mariadb") {
+		return "mariadb/" + extractVersion(banner)
+	}
+	if strings.Contains(lower, "postgresql") {
+		return "postgresql"
+	}
+	if strings.Contains(lower, "smtp") {
+		return extractFirst(banner, 60)
+	}
+	if strings.Contains(lower, "ftp") {
+		return extractFirst(banner, 60)
+	}
+	if strings.Contains(lower, "redis") {
+		return "redis"
+	}
+	if strings.Contains(lower, "mongodb") {
+		return "mongodb"
+	}
+	if strings.Contains(lower, "elasticsearch") {
+		return "elasticsearch"
+	}
 
 	// Fallback by well-known port
 	switch port {
-	case 21:    return "ftp"
-	case 22:    return "ssh"
-	case 25, 587: return "smtp"
-	case 53:    return "dns"
-	case 110:   return "pop3"
-	case 143:   return "imap"
-	case 3306:  return "mysql"
-	case 5432:  return "postgresql"
-	case 6379:  return "redis"
-	case 27017: return "mongodb"
+	case 21:
+		return "ftp"
+	case 22:
+		return "ssh"
+	case 25, 587:
+		return "smtp"
+	case 53:
+		return "dns"
+	case 110:
+		return "pop3"
+	case 143:
+		return "imap"
+	case 3306:
+		return "mysql"
+	case 5432:
+		return "postgresql"
+	case 6379:
+		return "redis"
+	case 27017:
+		return "mongodb"
 	}
 
 	if len(banner) > 60 {
@@ -109,7 +137,9 @@ func parseServiceBanner(banner string, port int) string {
 
 func extractFirst(s string, maxLen int) string {
 	s = strings.TrimSpace(strings.Split(s, "\n")[0])
-	if len(s) > maxLen { return s[:maxLen] }
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
 	return s
 }
 
@@ -222,10 +252,14 @@ func analyzeTLS(ctx context.Context, sessionID, host, port string) TLSResult {
 	state := conn.ConnectionState()
 
 	switch state.Version {
-	case tls.VersionTLS10: result.Version = "TLSv1.0"
-	case tls.VersionTLS11: result.Version = "TLSv1.1"
-	case tls.VersionTLS12: result.Version = "TLSv1.2"
-	case tls.VersionTLS13: result.Version = "TLSv1.3"
+	case tls.VersionTLS10:
+		result.Version = "TLSv1.0"
+	case tls.VersionTLS11:
+		result.Version = "TLSv1.1"
+	case tls.VersionTLS12:
+		result.Version = "TLSv1.2"
+	case tls.VersionTLS13:
+		result.Version = "TLSv1.3"
 	}
 
 	// Check weak TLS versions
@@ -289,14 +323,14 @@ func wafDetect(ctx context.Context, sessionID, targetURL string) WAFResult {
 	combined := strings.ToLower(allHeaders + bodyStr)
 
 	wafSignatures := map[string][]string{
-		"Cloudflare":   {"cf-ray", "cloudflare", "__cfduid", "cf-cache-status"},
-		"Akamai":       {"akamai", "x-akamai", "akamaighost"},
-		"AWS WAF":      {"x-amzn-requestid", "x-amz-cf-id", "awselb", "aws-waf"},
-		"ModSecurity":  {"mod_security", "modsecurity", "mod_sec"},
-		"Sucuri":       {"sucuri", "x-sucuri"},
-		"Imperva":      {"imperva", "incapsula", "x-iinfo", "visid_incap"},
-		"F5 BIG-IP":    {"bigip", "f5", "x-wa-info"},
-		"Barracuda":    {"barracuda", "barra_counter_session"},
+		"Cloudflare":  {"cf-ray", "cloudflare", "__cfduid", "cf-cache-status"},
+		"Akamai":      {"akamai", "x-akamai", "akamaighost"},
+		"AWS WAF":     {"x-amzn-requestid", "x-amz-cf-id", "awselb", "aws-waf"},
+		"ModSecurity": {"mod_security", "modsecurity", "mod_sec"},
+		"Sucuri":      {"sucuri", "x-sucuri"},
+		"Imperva":     {"imperva", "incapsula", "x-iinfo", "visid_incap"},
+		"F5 BIG-IP":   {"bigip", "f5", "x-wa-info"},
+		"Barracuda":   {"barracuda", "barra_counter_session"},
 	}
 
 	for vendor, sigs := range wafSignatures {
@@ -307,7 +341,9 @@ func wafDetect(ctx context.Context, sessionID, targetURL string) WAFResult {
 				break
 			}
 		}
-		if result.Detected { break }
+		if result.Detected {
+			break
+		}
 	}
 
 	// Also try a suspicious request to trigger WAF
@@ -332,7 +368,9 @@ func wafDetect(ctx context.Context, sessionID, targetURL string) WAFResult {
 						break
 					}
 				}
-				if result.Detected { break }
+				if result.Detected {
+					break
+				}
 			}
 			if !result.Detected && (probeResp.StatusCode == 403 || probeResp.StatusCode == 406) {
 				result.Detected = true
@@ -395,11 +433,11 @@ func cmsDetect(ctx context.Context, sessionID, targetURL string) CMSResult {
 
 	// Probe known CMS paths
 	cmsPaths := map[string]string{
-		"/wp-admin/":       "WordPress",
-		"/wp-login.php":    "WordPress",
-		"/administrator/":  "Joomla",
-		"/misc/drupal.js":  "Drupal",
-		"/sites/default/":  "Drupal",
+		"/wp-admin/":      "WordPress",
+		"/wp-login.php":   "WordPress",
+		"/administrator/": "Joomla",
+		"/misc/drupal.js": "Drupal",
+		"/sites/default/": "Drupal",
 	}
 	for path, cms := range cmsPaths {
 		probeURL := strings.TrimRight(targetURL, "/") + path
