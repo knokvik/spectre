@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -33,6 +34,7 @@ var (
 	mlEngineURL      = getEnv("ML_ENGINE_URL", "http://localhost:5001")
 	llmClassifierURL = getEnv("LLM_CLASSIFIER_URL", "http://localhost:5002")
 	scoringEngineURL = getEnv("SCORING_ENGINE_URL", "http://localhost:5003")
+	intelServiceURL  = getEnv("INTEL_SERVICE_URL", "http://localhost:5004")
 )
 
 func getEnv(key, fallback string) string {
@@ -47,32 +49,38 @@ func getEnv(key, fallback string) string {
 // ---------------------------------------------------------------------------
 type ReconCollector struct {
 	mu                       sync.Mutex
-	OpenPorts                []int             `json:"open_ports"`
-	MissingHeaders           []string          `json:"missing_headers"`
-	TLSVersion               string            `json:"tls_version"`
-	TLSAvailable             bool              `json:"tls_available"`
-	ServerHeader             string            `json:"server_header"`
-	XPoweredBy               string            `json:"x_powered_by"`
-	ErrorProbeSQLi           bool              `json:"error_probe_sqli"`
-	ErrorProbeTraversal      bool              `json:"error_probe_traversal"`
-	StackTraceDetected       bool              `json:"stack_trace_detected"`
-	RobotsFound              bool              `json:"robots_found"`
-	DisallowedPaths          []string          `json:"disallowed_paths"`
-	TotalOpenPorts           int               `json:"total_open_ports"`
-	RiskyPortsOpen           int               `json:"risky_ports_open"`
-	URLClassification        string            `json:"url_classification"`
-	ClassificationConfidence float64           `json:"classification_confidence"`
-	BackendEndpoints         []BackendEndpoint `json:"backend_endpoints"`
-	BackendEndpointCount     int               `json:"backend_endpoint_count"`
-	RESTEndpointCount        int               `json:"rest_endpoint_count"`
-	GraphQLEndpointCount     int               `json:"graphql_endpoint_count"`
-	IDORCandidateCount       int               `json:"idor_candidate_count"`
-	AuthSurfaceCount         int               `json:"auth_surface_count"`
-	ConsentRequired          bool              `json:"consent_required"`
-	ConsentResolved          bool              `json:"consent_resolved"`
-	ConsentApproved          bool              `json:"consent_approved"`
-	ConsentMessage           string            `json:"consent_message"`
-	ApprovedEndpoints        map[string]bool   `json:"-"`
+	OpenPorts                []int               `json:"open_ports"`
+	MissingHeaders           []string            `json:"missing_headers"`
+	TLSVersion               string              `json:"tls_version"`
+	TLSAvailable             bool                `json:"tls_available"`
+	ServerHeader             string              `json:"server_header"`
+	XPoweredBy               string              `json:"x_powered_by"`
+	ErrorProbeSQLi           bool                `json:"error_probe_sqli"`
+	ErrorProbeTraversal      bool                `json:"error_probe_traversal"`
+	StackTraceDetected       bool                `json:"stack_trace_detected"`
+	RobotsFound              bool                `json:"robots_found"`
+	DisallowedPaths          []string            `json:"disallowed_paths"`
+	TotalOpenPorts           int                 `json:"total_open_ports"`
+	RiskyPortsOpen           int                 `json:"risky_ports_open"`
+	URLClassification        string              `json:"url_classification"`
+	ClassificationConfidence float64             `json:"classification_confidence"`
+	BackendEndpoints         []BackendEndpoint   `json:"backend_endpoints"`
+	BackendEndpointCount     int                 `json:"backend_endpoint_count"`
+	RESTEndpointCount        int                 `json:"rest_endpoint_count"`
+	GraphQLEndpointCount     int                 `json:"graphql_endpoint_count"`
+	IDORCandidateCount       int                 `json:"idor_candidate_count"`
+	AuthSurfaceCount         int                 `json:"auth_surface_count"`
+	ConsentRequired          bool                `json:"consent_required"`
+	ConsentResolved          bool                `json:"consent_resolved"`
+	ConsentApproved          bool                `json:"consent_approved"`
+	ConsentMessage           string              `json:"consent_message"`
+	ApprovedEndpoints        map[string]bool     `json:"-"`
+	ServiceInventory         []DiscoveredService `json:"service_inventory"`
+	ApprovedServices         map[string]bool     `json:"-"`
+	AllowLogs                bool                `json:"allow_logs"`
+	SelectedLogSources       []string            `json:"selected_log_sources"`
+	LogSignals               LogSignals          `json:"log_signals"`
+	RequestCount             int                 `json:"request_count"`
 }
 
 type BackendEndpoint struct {
@@ -81,6 +89,20 @@ type BackendEndpoint struct {
 	Source             string  `json:"source"`
 	Confidence         float64 `json:"confidence"`
 	APIType            string  `json:"api_type"`
+}
+
+type DiscoveredService struct {
+	Address     string  `json:"address"`
+	Host        string  `json:"host"`
+	Port        int     `json:"port"`
+	Type        string  `json:"service_type"`
+	Relation    string  `json:"relation"`
+	Confidence  float64 `json:"confidence"`
+	Source      string  `json:"source"`
+	Reason      string  `json:"reason"`
+	Selectable  bool    `json:"selectable"`
+	Recommended bool    `json:"recommended"`
+	Internal    bool    `json:"internal"`
 }
 
 type AttackPlan struct {
@@ -98,12 +120,15 @@ var pendingTargets sync.Map
 
 func getCollector(sessionID string) *ReconCollector {
 	val, loaded := reconData.LoadOrStore(sessionID, &ReconCollector{
-		TLSAvailable:      true,
-		OpenPorts:         []int{},
-		MissingHeaders:    []string{},
-		DisallowedPaths:   []string{},
-		BackendEndpoints:  []BackendEndpoint{},
-		ApprovedEndpoints: make(map[string]bool),
+		TLSAvailable:       true,
+		OpenPorts:          []int{},
+		MissingHeaders:     []string{},
+		DisallowedPaths:    []string{},
+		BackendEndpoints:   []BackendEndpoint{},
+		ApprovedEndpoints:  make(map[string]bool),
+		ServiceInventory:   []DiscoveredService{},
+		ApprovedServices:   make(map[string]bool),
+		SelectedLogSources: []string{},
 	})
 	if !loaded {
 		log.Printf("[attack-orchestrator] Created recon collector for session %s", sessionID)
@@ -214,12 +239,122 @@ func collectReconEvent(sessionID string, data map[string]interface{}) {
 			c.ClassificationConfidence = confidence
 		}
 
+	case "behavior-discovery":
+		if requestCount, ok := toInt(data["request_count"]); ok {
+			c.RequestCount = requestCount
+		}
+
 	case "infrastructure-consent":
 		if required, ok := data["required"].(bool); ok {
 			c.ConsentRequired = required
 		}
 		if message, ok := data["message"].(string); ok {
 			c.ConsentMessage = message
+		}
+		if services, ok := data["services"].([]interface{}); ok {
+			for _, raw := range services {
+				serviceMap, ok := raw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				service := DiscoveredService{}
+				if address, ok := serviceMap["address"].(string); ok {
+					service.Address = address
+				}
+				if host, ok := serviceMap["host"].(string); ok {
+					service.Host = host
+				}
+				if port, ok := toInt(serviceMap["port"]); ok {
+					service.Port = port
+				}
+				if serviceType, ok := serviceMap["type"].(string); ok {
+					service.Type = serviceType
+				} else if serviceType, ok := serviceMap["service_type"].(string); ok {
+					service.Type = serviceType
+				}
+				if relation, ok := serviceMap["relation"].(string); ok {
+					service.Relation = relation
+				}
+				if confidence, ok := serviceMap["confidence"].(float64); ok {
+					service.Confidence = confidence
+				}
+				if source, ok := serviceMap["source"].(string); ok {
+					service.Source = source
+				}
+				if reason, ok := serviceMap["reason"].(string); ok {
+					service.Reason = reason
+				}
+				if selectable, ok := serviceMap["selectable"].(bool); ok {
+					service.Selectable = selectable
+				}
+				if recommended, ok := serviceMap["recommended"].(bool); ok {
+					service.Recommended = recommended
+				}
+				if internal, ok := serviceMap["internal"].(bool); ok {
+					service.Internal = internal
+				}
+				if service.Address != "" {
+					known := false
+					for _, existing := range c.ServiceInventory {
+						if existing.Address == service.Address {
+							known = true
+							break
+						}
+					}
+					if !known {
+						c.ServiceInventory = append(c.ServiceInventory, service)
+					}
+				}
+			}
+		}
+	}
+
+	if eventType == "service-discovery" {
+		service := DiscoveredService{}
+		if address, ok := data["address"].(string); ok {
+			service.Address = address
+		}
+		if host, ok := data["host"].(string); ok {
+			service.Host = host
+		}
+		if port, ok := toInt(data["port"]); ok {
+			service.Port = port
+		}
+		if serviceType, ok := data["service_type"].(string); ok {
+			service.Type = serviceType
+		}
+		if relation, ok := data["relation"].(string); ok {
+			service.Relation = relation
+		}
+		if confidence, ok := data["confidence"].(float64); ok {
+			service.Confidence = confidence
+		}
+		if source, ok := data["source"].(string); ok {
+			service.Source = source
+		}
+		if reason, ok := data["reason"].(string); ok {
+			service.Reason = reason
+		}
+		if selectable, ok := data["selectable"].(bool); ok {
+			service.Selectable = selectable
+		}
+		if recommended, ok := data["recommended"].(bool); ok {
+			service.Recommended = recommended
+		}
+		if internal, ok := data["internal"].(bool); ok {
+			service.Internal = internal
+		}
+		if service.Address != "" {
+			known := false
+			for _, existing := range c.ServiceInventory {
+				if existing.Address == service.Address {
+					known = true
+					break
+				}
+			}
+			if !known {
+				c.ServiceInventory = append(c.ServiceInventory, service)
+			}
 		}
 	}
 
@@ -282,6 +417,21 @@ func toInt(v interface{}) (int, bool) {
 	return 0, false
 }
 
+func toBool(v interface{}) (bool, bool) {
+	switch b := v.(type) {
+	case bool:
+		return b, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(b)) {
+		case "true", "1", "yes":
+			return true, true
+		case "false", "0", "no":
+			return false, true
+		}
+	}
+	return false, false
+}
+
 func parseSelectedEndpoints(raw interface{}) []string {
 	switch v := raw.(type) {
 	case []interface{}:
@@ -323,7 +473,7 @@ func applyApprovedEndpoints(c *ReconCollector, selected []string) {
 	}
 
 	if len(selectedSet) == 0 {
-		c.BackendEndpoints = nil
+		c.BackendEndpoints = []BackendEndpoint{}
 		c.BackendEndpointCount = 0
 		c.RESTEndpointCount = 0
 		c.GraphQLEndpointCount = 0
@@ -367,6 +517,14 @@ func applyApprovedEndpoints(c *ReconCollector, selected []string) {
 	c.ApprovedEndpoints = selectedSet
 }
 
+func applyApprovedServices(c *ReconCollector, selected []string) {
+	selectedSet := make(map[string]bool, len(selected))
+	for _, service := range selected {
+		selectedSet[service] = true
+	}
+	c.ApprovedServices = selectedSet
+}
+
 // ---------------------------------------------------------------------------
 // ML Engine / LLM Classifier / Scoring Engine HTTP Clients
 // ---------------------------------------------------------------------------
@@ -399,16 +557,34 @@ type ScoreFinding struct {
 }
 
 type ScoreResponse struct {
-	RiskScore float64 `json:"risk_score"`
-	RiskLevel string  `json:"risk_level"`
-	RiskGrade string  `json:"risk_grade"`
-	Summary   string  `json:"summary"`
+	RiskScore  float64 `json:"risk_score"`
+	RiskLevel  string  `json:"risk_level"`
+	RiskGrade  string  `json:"risk_grade"`
+	EBSSScore  int     `json:"ebss_score"`
+	EBSSGrade  string  `json:"ebss_grade"`
+	Priority   string  `json:"priority"`
+	Confidence float64 `json:"confidence"`
+	Summary    string  `json:"summary"`
+}
+
+type IntelResponse struct {
+	SessionID             string                   `json:"session_id"`
+	HighestEPSS           float64                  `json:"highest_epss"`
+	KEVCount              int                      `json:"kev_count"`
+	ExploitReferenceCount int                      `json:"exploit_reference_count"`
+	Priority              string                   `json:"priority"`
+	PriorityScore         float64                  `json:"priority_score"`
+	Rationale             string                   `json:"rationale"`
+	CVEs                  []string                 `json:"cves"`
+	IntelItems            []map[string]interface{} `json:"intel_items"`
 }
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 func callMLPredict(sessionID string, collector *ReconCollector) (*MLPredictionResponse, error) {
 	collector.mu.Lock()
+	backendEndpoints := append([]BackendEndpoint{}, collector.BackendEndpoints...)
+	serviceInventory := append([]DiscoveredService{}, collector.ServiceInventory...)
 	payload := map[string]interface{}{
 		"session_id":                sessionID,
 		"open_ports":                collector.OpenPorts,
@@ -424,12 +600,20 @@ func callMLPredict(sessionID string, collector *ReconCollector) (*MLPredictionRe
 		"disallowed_paths":          collector.DisallowedPaths,
 		"url_classification":        collector.URLClassification,
 		"classification_confidence": collector.ClassificationConfidence,
-		"backend_endpoints":         collector.BackendEndpoints,
+		"backend_endpoints":         backendEndpoints,
 		"backend_endpoint_count":    collector.BackendEndpointCount,
 		"rest_endpoint_count":       collector.RESTEndpointCount,
 		"graphql_endpoint_count":    collector.GraphQLEndpointCount,
 		"idor_candidate_count":      collector.IDORCandidateCount,
 		"auth_surface_count":        collector.AuthSurfaceCount,
+		"service_inventory":         serviceInventory,
+		"service_count":             len(serviceInventory),
+		"backend_service_count":     countServicesByType(serviceInventory, "backend"),
+		"db_service_count":          countServicesByType(serviceInventory, "database"),
+		"external_service_count":    countExternalServices(serviceInventory),
+		"log_signals":               collector.LogSignals,
+		"logs_enabled":              collector.AllowLogs,
+		"request_count":             collector.RequestCount,
 	}
 	collector.mu.Unlock()
 
@@ -481,8 +665,10 @@ func callClassify(sessionID, vulnType, attackResult string, httpStatus int, conf
 	return &result, nil
 }
 
-func callScoring(sessionID, targetURL string, findings []ScoreFinding, collector *ReconCollector) (*ScoreResponse, error) {
+func callScoring(sessionID, targetURL string, findings []ScoreFinding, collector *ReconCollector, intel *IntelResponse) (*ScoreResponse, error) {
 	collector.mu.Lock()
+	serviceCount := len(collector.ServiceInventory)
+	apiCount := collector.BackendEndpointCount
 	payload := map[string]interface{}{
 		"session_id":               sessionID,
 		"target_url":               targetURL,
@@ -491,8 +677,21 @@ func callScoring(sessionID, targetURL string, findings []ScoreFinding, collector
 		"weak_tls":                 collector.TLSVersion == "TLS 1.0" || collector.TLSVersion == "TLS 1.1" || !collector.TLSAvailable,
 		"total_open_ports":         collector.TotalOpenPorts,
 		"risky_ports_open":         collector.RiskyPortsOpen,
+		"service_count":            serviceCount,
+		"api_count":                apiCount,
+		"request_count":            collector.RequestCount,
+		"error_rate":               collector.LogSignals.ErrorRate,
+		"auth_failures":            collector.LogSignals.AuthFailures,
+		"db_errors":                collector.LogSignals.DBErrors,
+		"anomaly_count":            collector.LogSignals.AnomalyCount,
+		"request_spikes":           collector.LogSignals.RequestSpikes,
 	}
 	collector.mu.Unlock()
+	if intel != nil {
+		payload["epss_score"] = intel.HighestEPSS
+		payload["kev_hits"] = intel.KEVCount
+		payload["exploit_references"] = intel.ExploitReferenceCount
+	}
 
 	body, _ := json.Marshal(payload)
 	resp, err := httpClient.Post(scoringEngineURL+"/score", "application/json", bytes.NewReader(body))
@@ -509,6 +708,39 @@ func callScoring(sessionID, targetURL string, findings []ScoreFinding, collector
 	var result ScoreResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("Scoring Engine response decode failed: %w", err)
+	}
+	return &result, nil
+}
+
+func callIntel(sessionID, targetURL, attackEvidence string, findings []ScoreFinding) (*IntelResponse, error) {
+	if intelServiceURL == "" {
+		return nil, nil
+	}
+	categories := make([]string, 0, len(findings))
+	for _, finding := range findings {
+		if finding.Type != "" {
+			categories = append(categories, finding.Type)
+		}
+	}
+	payload := map[string]interface{}{
+		"session_id":    sessionID,
+		"target_url":    targetURL,
+		"finding_type":  strings.Join(categories, ", "),
+		"attack_result": attackEvidence,
+	}
+	body, _ := json.Marshal(payload)
+	resp, err := httpClient.Post(intelServiceURL+"/intel", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("intel service returned %d: %s", resp.StatusCode, string(b))
+	}
+	var result IntelResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
 	}
 	return &result, nil
 }
@@ -569,6 +801,9 @@ func main() {
 			sessionID, _ := msg.Data["session_id"].(string)
 			action, _ := msg.Data["action"].(string)
 			selectedEndpoints := parseSelectedEndpoints(msg.Data["selected_endpoints"])
+			selectedServices := parseSelectedEndpoints(msg.Data["selected_services"])
+			selectedLogSources := parseSelectedEndpoints(msg.Data["selected_log_sources"])
+			allowLogs, _ := toBool(msg.Data["allow_logs"])
 			if sessionID == "" || action == "" {
 				return nil
 			}
@@ -579,6 +814,9 @@ func main() {
 			collector.ConsentApproved = action == "approve"
 			if action == "approve" {
 				applyApprovedEndpoints(collector, selectedEndpoints)
+				applyApprovedServices(collector, selectedServices)
+				collector.AllowLogs = allowLogs
+				collector.SelectedLogSources = selectedLogSources
 			}
 			collector.mu.Unlock()
 
@@ -590,7 +828,7 @@ func main() {
 			targetURL := targetVal.(string)
 			if action == "approve" {
 				log.Printf("[attack-orchestrator] consent approved for session %s", sessionID)
-				publishAttackEvent(ctx, sessionID, "info", fmt.Sprintf("Scope approved. Proceeding with %d selected endpoint(s).", len(selectedEndpoints)))
+				publishAttackEvent(ctx, sessionID, "info", fmt.Sprintf("Scope approved. Proceeding with %d endpoint(s), %d service(s), logs=%t.", len(selectedEndpoints), len(selectedServices), allowLogs))
 				publishPhaseUpdate(ctx, sessionID, "ml-analysis")
 				sessionCtx, cancel := context.WithCancel(ctx)
 				sessionCtxs.Store(sessionID, cancel)
@@ -627,7 +865,7 @@ func main() {
 		log.Printf("[attack-orchestrator] recon event: session=%s type=%s step=%s", sessionID, eventType, step)
 
 		// Collect recon data as it streams in, including consent and endpoint discoveries.
-		if eventType == "recon" || eventType == "warning" || eventType == "consent-required" || eventType == "backend-api" {
+		if eventType == "recon" || eventType == "warning" || eventType == "consent-required" || eventType == "backend-api" || eventType == "service-discovery" {
 			collectReconEvent(sessionID, msg.Data)
 		}
 
@@ -709,9 +947,19 @@ func runMLPipeline(ctx context.Context, sessionID, targetURL string) {
 	}
 
 	// ── Phase 1: ML Prediction ──────────────────────────────────────
+	if collector.AllowLogs && len(collector.SelectedLogSources) > 0 {
+		publishAttackEvent(ctx, sessionID, "info", fmt.Sprintf("Collecting approved logs from %d selected service(s)...", len(collector.ApprovedServices)))
+		signals := collectApprovedLogs(ctx, sessionID, targetURL, collector)
+		collector.mu.Lock()
+		collector.LogSignals = signals
+		collector.mu.Unlock()
+		publishAttackEvent(ctx, sessionID, "info", fmt.Sprintf("Log analysis captured %d events, %d anomaly signal(s), %d DB error(s).", signals.TotalEntries, signals.AnomalyCount, signals.DBErrors))
+	}
 	publishAttackEvent(ctx, sessionID, "info", "🧠 Sending recon data to ML Engine for vulnerability prediction...")
 	publishServiceMetric(ctx, sessionID, "attack-orchestrator", "ml-analysis", "Collecting Model 1 features from recon output", map[string]interface{}{
 		"backend_endpoints": collector.BackendEndpointCount,
+		"service_count":     len(collector.ServiceInventory),
+		"logs_enabled":      collector.AllowLogs,
 		"load_pct":          61,
 	})
 	time.Sleep(500 * time.Millisecond)
@@ -720,14 +968,14 @@ func runMLPipeline(ctx context.Context, sessionID, targetURL string) {
 	if err != nil {
 		publishAttackEvent(ctx, sessionID, "error", fmt.Sprintf("ML Engine unavailable: %v. Falling back to static attacks.", err))
 		// Fallback: run static attacks if ML Engine is down
-		executeStaticAttacks(ctx, sessionID, baseURL)
+		executeStaticAttacks(ctx, sessionID, baseURL, collector)
 		return
 	}
 
 	if len(mlResult.Predictions) == 0 {
 		publishAttackEvent(ctx, sessionID, "success", "✅ ML Engine found no likely vulnerabilities. Target appears secure.")
 		publishPhaseUpdate(ctx, sessionID, "score")
-		callFinalScoring(ctx, sessionID, baseURL, nil, collector)
+		callFinalScoring(ctx, sessionID, baseURL, nil, collector, "")
 		return
 	}
 
@@ -758,6 +1006,7 @@ func runMLPipeline(ctx context.Context, sessionID, targetURL string) {
 	}
 
 	findings := make([]ScoreFinding, 0, len(mlResult.Predictions))
+	attackEvidence := make([]string, 0, len(mlResult.Predictions))
 	for _, pred := range mlResult.Predictions {
 		if ctx.Err() != nil {
 			publishAttackEvent(context.Background(), sessionID, "warning", "⛔ Assessment stopped by user.")
@@ -769,6 +1018,7 @@ func runMLPipeline(ctx context.Context, sessionID, targetURL string) {
 		if planResult == "" {
 			planResult = fmt.Sprintf("Model 2 prioritized no executable tool for %s; backend API focus retained in scoring.", pred.Category)
 		}
+		attackEvidence = append(attackEvidence, planResult)
 		classification := classifyFinding(ctx, sessionID, pred.Category, planResult, httpStatus, pred.Confidence, baseURL, collector.URLClassification)
 		findings = append(findings, ScoreFinding{
 			Type:          pred.Category,
@@ -785,7 +1035,7 @@ func runMLPipeline(ctx context.Context, sessionID, targetURL string) {
 	publishAttackEvent(ctx, sessionID, "info", "📊 Computing final risk score...")
 	time.Sleep(500 * time.Millisecond)
 
-	callFinalScoring(ctx, sessionID, baseURL, findings, collector)
+	callFinalScoring(ctx, sessionID, baseURL, findings, collector, strings.Join(attackEvidence, "\n"))
 
 	// Cleanup
 	reconData.Delete(sessionID)
@@ -1044,8 +1294,12 @@ func classifyFinding(ctx context.Context, sessionID, vulnType, attackResult stri
 	return classification
 }
 
-func callFinalScoring(ctx context.Context, sessionID, targetURL string, findings []ScoreFinding, collector *ReconCollector) {
-	scoreResult, err := callScoring(sessionID, targetURL, findings, collector)
+func callFinalScoring(ctx context.Context, sessionID, targetURL string, findings []ScoreFinding, collector *ReconCollector, attackEvidence string) {
+	intelResult, intelErr := callIntel(sessionID, targetURL, attackEvidence, findings)
+	if intelErr != nil {
+		publishAttackEvent(ctx, sessionID, "warning", fmt.Sprintf("Threat intelligence enrichment unavailable: %v", intelErr))
+	}
+	scoreResult, err := callScoring(sessionID, targetURL, findings, collector, intelResult)
 	if err != nil {
 		log.Printf("[attack-orchestrator] Scoring Engine error: %v", err)
 		publishAttackEvent(ctx, sessionID, "error", fmt.Sprintf("Scoring Engine unavailable: %v", err))
@@ -1055,15 +1309,20 @@ func callFinalScoring(ctx context.Context, sessionID, targetURL string, findings
 	}
 
 	publishAttackEvent(ctx, sessionID, "risk-score",
-		fmt.Sprintf("📋 RISK SCORE: %.1f/10 (%s) — Grade: %s",
-			scoreResult.RiskScore, scoreResult.RiskLevel, scoreResult.RiskGrade))
+		fmt.Sprintf("📋 RISK SCORE: %.1f/10 (%s) — Grade: %s | EBSS %d (%s, %s)",
+			scoreResult.RiskScore, scoreResult.RiskLevel, scoreResult.RiskGrade, scoreResult.EBSSScore, scoreResult.EBSSGrade, scoreResult.Priority))
 	publishServiceMetric(ctx, sessionID, "attack-orchestrator", "score", "Scoring finalized for session", map[string]interface{}{
 		"risk_score": scoreResult.RiskScore,
 		"risk_level": scoreResult.RiskLevel,
+		"ebss_score": scoreResult.EBSSScore,
+		"priority":   scoreResult.Priority,
 		"load_pct":   28,
 	})
 	time.Sleep(300 * time.Millisecond)
 	publishAttackEvent(ctx, sessionID, "info", fmt.Sprintf("Summary: %s", scoreResult.Summary))
+	if intelResult != nil && intelResult.Priority != "" {
+		publishAttackEvent(ctx, sessionID, "info", fmt.Sprintf("Threat intel: priority=%s, EPSS=%.3f, KEV hits=%d, exploit refs=%d", intelResult.Priority, intelResult.HighestEPSS, intelResult.KEVCount, intelResult.ExploitReferenceCount))
+	}
 	publishAttackEvent(ctx, sessionID, "success", "✅ ML-powered assessment complete.")
 	publishPhaseUpdate(ctx, sessionID, "report")
 }
@@ -1071,26 +1330,165 @@ func callFinalScoring(ctx context.Context, sessionID, targetURL string, findings
 // ---------------------------------------------------------------------------
 // Static Attack Fallback (if ML Engine is down)
 // ---------------------------------------------------------------------------
-func executeStaticAttacks(ctx context.Context, sessionID, baseURL string) {
+func executeStaticAttacks(ctx context.Context, sessionID, baseURL string, collector *ReconCollector) {
 	publishPhaseUpdate(ctx, sessionID, "attack")
-	publishAttackEvent(ctx, sessionID, "warning", "⚠️ Running static fallback attacks (ML Engine unavailable)")
+	publishAttackEvent(ctx, sessionID, "warning", "⚠️ Running behavior-constrained fallback attacks (ML Engine unavailable)")
 	time.Sleep(1 * time.Second)
 
-	fireStaticPayload(ctx, sessionID, "Info Disclosure", baseURL+"/.env", "DB_PASSWORD")
-	time.Sleep(1 * time.Second)
-	fireStaticPayload(ctx, sessionID, "Path Traversal", baseURL+"/../../../../etc/passwd", "root:x:0:0:")
-	time.Sleep(1 * time.Second)
-	fireStaticPayload(ctx, sessionID, "SQLi Probe", baseURL+"/?id=1'+OR+'1'='1", "syntax error")
-	time.Sleep(1 * time.Second)
-	fireStaticPayload(ctx, sessionID, "XSS Probe", baseURL+"/?search=<script>alert('SPECTRE')</script>", "<script>alert('SPECTRE')</script>")
-	time.Sleep(1 * time.Second)
+	plans := buildStaticFallbackPlans(collector)
+	if len(plans) == 0 {
+		publishAttackEvent(ctx, sessionID, "warning", "No approved observed endpoints are available for safe fallback probes. Skipping active attack execution.")
+		publishPhaseUpdate(ctx, sessionID, "score")
+		callFinalScoring(ctx, sessionID, baseURL, nil, collector, "")
+		return
+	}
 
-	publishAttackEvent(ctx, sessionID, "success", "Static fallback attacks completed.")
+	var findings []ScoreFinding
+	var evidence []string
+	for _, plan := range plans {
+		if ctx.Err() != nil {
+			publishAttackEvent(context.Background(), sessionID, "warning", "⛔ Assessment stopped by user.")
+			publishPhaseUpdate(context.Background(), sessionID, "report")
+			return
+		}
+
+		var (
+			result    string
+			httpCode  int
+			confirmed bool
+		)
+		if plan.Tool == "graphql-probe" {
+			result, httpCode, confirmed = executeGraphQLProbe(ctx, sessionID, plan)
+		} else {
+			result, httpCode, confirmed = fireStaticPayload(ctx, sessionID, plan.Name, plan.TargetURL, staticSignatureForPlan(plan))
+		}
+		evidence = append(evidence, result)
+		findings = append(findings, ScoreFinding{
+			Type:          staticFindingType(plan),
+			Severity:      staticSeverity(confirmed),
+			SeverityScore: staticSeverityScore(plan, confirmed, httpCode),
+			Confirmed:     confirmed,
+		})
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	publishAttackEvent(ctx, sessionID, "success", "Behavior-constrained fallback attacks completed.")
 	publishPhaseUpdate(ctx, sessionID, "score")
-	publishPhaseUpdate(ctx, sessionID, "report")
+	callFinalScoring(ctx, sessionID, baseURL, findings, collector, strings.Join(evidence, "\n"))
 }
 
-func fireStaticPayload(ctx context.Context, sessionID, attackName, targetURL, errorSignature string) {
+func buildStaticFallbackPlans(collector *ReconCollector) []AttackPlan {
+	collector.mu.Lock()
+	defer collector.mu.Unlock()
+
+	plans := make([]AttackPlan, 0, len(collector.BackendEndpoints))
+	seen := map[string]bool{}
+	for _, endpoint := range collector.BackendEndpoints {
+		normalized := strings.ToLower(endpoint.Normalized)
+		switch {
+		case endpoint.APIType == "graphql":
+			key := "graphql:" + endpoint.DiscoveredEndpoint
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			plans = append(plans, AttackPlan{
+				Category:  "Weak Authentication / Authorization",
+				Name:      "GraphQL introspection probe",
+				Tool:      "graphql-probe",
+				TargetURL: endpoint.DiscoveredEndpoint,
+				Reason:    "Observed GraphQL endpoint approved by the user",
+				Priority:  1,
+			})
+		case endpoint.APIType == "rest" && (strings.Contains(endpoint.DiscoveredEndpoint, "?") || strings.Contains(normalized, "id=") || strings.Contains(normalized, "search=") || strings.Contains(normalized, "query=")):
+			probeURL := mutateStaticProbeURL(endpoint.DiscoveredEndpoint)
+			if probeURL == "" {
+				continue
+			}
+			key := "sqli:" + probeURL
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			plans = append(plans, AttackPlan{
+				Category:  "SQL Injection",
+				Name:      "Observed API SQLi probe",
+				Tool:      "static-http",
+				TargetURL: probeURL,
+				Reason:    "Observed REST endpoint with approved query surface",
+				Priority:  1,
+			})
+		}
+	}
+
+	sort.SliceStable(plans, func(i, j int) bool {
+		if plans[i].Priority == plans[j].Priority {
+			return plans[i].TargetURL < plans[j].TargetURL
+		}
+		return plans[i].Priority < plans[j].Priority
+	})
+	return plans
+}
+
+func mutateStaticProbeURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	query := parsed.Query()
+	if len(query) == 0 {
+		query.Set("id", "1' OR '1'='1")
+	} else {
+		for key := range query {
+			query.Set(key, "1' OR '1'='1")
+			break
+		}
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+func staticSignatureForPlan(plan AttackPlan) string {
+	switch plan.Name {
+	case "Observed API SQLi probe":
+		return "syntax error"
+	default:
+		return "__schema"
+	}
+}
+
+func staticFindingType(plan AttackPlan) string {
+	switch plan.Name {
+	case "GraphQL introspection probe":
+		return "Weak Authentication / Authorization"
+	default:
+		return plan.Category
+	}
+}
+
+func staticSeverity(confirmed bool) string {
+	if confirmed {
+		return "HIGH"
+	}
+	return "LOW"
+}
+
+func staticSeverityScore(plan AttackPlan, confirmed bool, httpCode int) float64 {
+	if confirmed {
+		switch plan.Name {
+		case "GraphQL introspection probe":
+			return 7.2
+		default:
+			return 8.1
+		}
+	}
+	if httpCode >= 500 {
+		return 4.5
+	}
+	return 2.5
+}
+
+func fireStaticPayload(ctx context.Context, sessionID, attackName, targetURL, errorSignature string) (string, int, bool) {
 	publishAttackEvent(ctx, sessionID, "attack", fmt.Sprintf("Executing [%s] on %s", attackName, targetURL))
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -1098,24 +1496,28 @@ func fireStaticPayload(ctx context.Context, sessionID, attackName, targetURL, er
 
 	if err != nil {
 		publishAttackEvent(ctx, sessionID, "error", fmt.Sprintf("[%s] Connection failed: %v", attackName, err))
-		return
+		return fmt.Sprintf("%s failed: %v", attackName, err), 0, false
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	bodyStr := string(bodyBytes)
+	confirmed := false
 
 	if strings.Contains(bodyStr, errorSignature) || resp.StatusCode == 200 {
 		if attackName == "Info Disclosure" && resp.StatusCode == 200 {
 			publishAttackEvent(ctx, sessionID, "critical", fmt.Sprintf("VULNERABILITY FOUND: [%s] Endpoint exposed!", attackName))
+			confirmed = true
 		} else if strings.Contains(bodyStr, errorSignature) {
 			publishAttackEvent(ctx, sessionID, "critical", fmt.Sprintf("VULNERABILITY FOUND: [%s] Signature matched!", attackName))
+			confirmed = true
 		} else {
 			publishAttackEvent(ctx, sessionID, "warning", fmt.Sprintf("[%s] returned HTTP %d, needs manual review.", attackName, resp.StatusCode))
 		}
 	} else {
 		publishAttackEvent(ctx, sessionID, "info", fmt.Sprintf("[%s] Blocked or unaffected (HTTP %d).", attackName, resp.StatusCode))
 	}
+	return fmt.Sprintf("%s returned HTTP %d: %s", attackName, resp.StatusCode, truncateText(bodyStr, 220)), resp.StatusCode, confirmed
 }
 
 // ---------------------------------------------------------------------------

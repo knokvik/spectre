@@ -388,6 +388,19 @@
             color: var(--text-dim);
             line-height: 1.6;
         }
+        .log-source-list {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .log-source-list label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.68rem;
+            color: var(--text-dim);
+        }
         .scope-list {
             display: flex;
             flex-direction: column;
@@ -530,7 +543,7 @@
             <div class="stats" id="statsBlock">
                 <h3>▸ Stats</h3>
                 <div class="stat-row"><span>Events</span><span class="val" id="eventCount">0</span></div>
-                <div class="stat-row"><span>Ports Found</span><span class="val" id="portCount">0</span></div>
+                <div class="stat-row"><span>Scope Items</span><span class="val" id="scopeCount">0</span></div>
                 <div class="stat-row"><span>Elapsed</span><span class="val" id="elapsed">0s</span></div>
             </div>
 
@@ -556,8 +569,24 @@
                         <div class="empty-list">Waiting for discovered endpoints...</div>
                     </div>
                 </div>
+                <div class="section-group">
+                    <h4>Selectable Services</h4>
+                    <div class="scope-list" id="consentServiceList">
+                        <div class="empty-list">Waiting for discovered services...</div>
+                    </div>
+                </div>
+                <div class="section-group">
+                    <h4>Log Collection</h4>
+                    <label style="display:flex;align-items:center;gap:8px;font-size:0.7rem;color:var(--text-dim);">
+                        <input type="checkbox" id="allowLogsToggle">
+                        Allow approved log collection for selected services
+                    </label>
+                    <div class="log-source-list" id="logSourceList">
+                        <div class="empty-list">Log source options will appear here.</div>
+                    </div>
+                </div>
                 <div class="consent-helper">
-                    Internal same-domain endpoints can be approved for deeper testing. External or restricted discoveries stay visible for review but cannot be selected here.
+                    Internal same-domain endpoints and services can be approved for deeper testing. External or restricted discoveries stay visible for review but cannot be selected here.
                 </div>
                 <div class="consent-actions">
                     <button class="consent-approve" onclick="submitConsent('approve')">Approve And Continue</button>
@@ -598,10 +627,26 @@
                 </div>
             </div>
             <div>
-                <h3>▸ Discovered Scope</h3>
+                <h3>▸ Discovered Services</h3>
+                <div class="panel-box">
+                    <div class="api-list" id="serviceList">
+                        <div class="empty-list">No linked services discovered yet.</div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h3>▸ Discovered APIs</h3>
                 <div class="panel-box">
                     <div class="api-list" id="apiList">
                         <div class="empty-list">No backend API endpoints discovered yet.</div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h3>▸ Intelligence</h3>
+                <div class="panel-box">
+                    <div class="api-list" id="intelList">
+                        <div class="empty-list">Threat intelligence will appear here after findings are enriched.</div>
                     </div>
                 </div>
             </div>
@@ -611,6 +656,14 @@
                     <div class="meta-row"><span>SSE Status</span><strong id="connectionStatus">Connected</strong></div>
                     <div class="metric-list" id="metricList">
                         <div class="empty-list">Waiting for microservice metrics...</div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h3>▸ Live Security Logs</h3>
+                <div class="panel-box">
+                    <div class="mini-log" id="securityLogList">
+                        <div class="empty-list">Approved security logs will stream here.</div>
                     </div>
                 </div>
             </div>
@@ -646,11 +699,13 @@
         const sessionID = "{{.ID}}";
         const startTime = Date.now();
         let eventCounter = 0;
-        let portCounter = 0;
         let currentPhase = 'recon';
         let firstEvent = true;
         const apiDiscoveries = new Map();
+        const serviceDiscoveries = new Map();
         const serviceMetrics = new Map();
+        const intelDiscoveries = [];
+        const securityLogs = [];
         const userLogs = [];
         const sectionLogs = {
             recon: [],
@@ -668,6 +723,10 @@
 
         // SSE connection
         const evtSource = new EventSource(`/api/session/events?session=${sessionID}`);
+
+        function updateScopeCount() {
+            document.getElementById('scopeCount').textContent = apiDiscoveries.size + serviceDiscoveries.size;
+        }
 
         function addSectionLog(section, message) {
             if (!message) return;
@@ -732,12 +791,66 @@
                 }).join('');
         }
 
-        function showConsentBox(message, items, reviewEndpoints) {
-            pendingConsent = { message, items, reviewEndpoints };
+        function renderConsentServices(reviewServices) {
+            const list = document.getElementById('consentServiceList');
+            const items = reviewServices && reviewServices.length
+                ? reviewServices
+                : Array.from(serviceDiscoveries.values());
+            if (!items.length) {
+                list.innerHTML = '<div class="empty-list">Waiting for discovered services...</div>';
+                return;
+            }
+            list.innerHTML = items
+                .sort((a, b) => {
+                    if (!!b.selectable === !!a.selectable) {
+                        return (b.confidence || 0) - (a.confidence || 0);
+                    }
+                    return a.selectable ? -1 : 1;
+                })
+                .map((item, idx) => {
+                    const key = item.address || `service-${idx}`;
+                    const checked = item.selectable && (item.recommended || item.internal) ? 'checked' : '';
+                    const disabled = item.selectable ? '' : 'disabled';
+                    const scopeType = item.internal ? 'internal' : 'external';
+                    return `
+                        <div class="scope-item ${item.selectable ? '' : 'disabled'}">
+                            <div class="scope-row">
+                                <input type="checkbox" class="service-checkbox" value="${key}" ${checked} ${disabled}>
+                                <div class="scope-main">
+                                    <code>${key}</code>
+                                    <div class="scope-meta">
+                                        <span class="scope-pill ${scopeType}">${scopeType}</span>
+                                        <span class="scope-pill">${item.service_type || item.type || 'service'}</span>
+                                        <span class="scope-pill">${item.relation || 'linked'}</span>
+                                        ${item.recommended ? '<span class="scope-pill recommended">recommended</span>' : ''}
+                                    </div>
+                                    <div class="scope-reason">${item.reason || 'Discovered during multi-service inventory.'}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+        }
+
+        function renderLogSourceOptions(logSources) {
+            const list = document.getElementById('logSourceList');
+            const sources = logSources && logSources.length ? logSources : ['application', 'system'];
+            list.innerHTML = sources.map(source => `
+                <label>
+                    <input type="checkbox" class="log-source-checkbox" value="${source}">
+                    ${source}
+                </label>
+            `).join('');
+        }
+
+        function showConsentBox(message, items, reviewEndpoints, reviewServices, logSources) {
+            pendingConsent = { message, items, reviewEndpoints, reviewServices, logSources };
             document.getElementById('consentMessage').textContent = message;
             const itemsBox = document.getElementById('consentItems');
             itemsBox.innerHTML = (items || []).map(item => `<div class="section-log-item">${item}</div>`).join('') || '<div class="empty-list">No detected items provided.</div>';
             renderConsentEndpoints(reviewEndpoints);
+            renderConsentServices(reviewServices);
+            renderLogSourceOptions(logSources);
             document.getElementById('consentBox').style.display = 'block';
         }
 
@@ -745,6 +858,13 @@
             if (!pendingConsent) return;
             const selectedEndpoints = action === 'approve'
                 ? Array.from(document.querySelectorAll('.scope-checkbox:checked')).map(input => input.value)
+                : [];
+            const selectedServices = action === 'approve'
+                ? Array.from(document.querySelectorAll('.service-checkbox:checked')).map(input => input.value)
+                : [];
+            const allowLogs = action === 'approve' && document.getElementById('allowLogsToggle').checked;
+            const selectedLogSources = allowLogs
+                ? Array.from(document.querySelectorAll('.log-source-checkbox:checked')).map(input => input.value)
                 : [];
             const note = action === 'approve' ? 'Approved by user from dashboard' : 'Declined by user from dashboard';
             fetch('/api/session/consent', {
@@ -755,16 +875,36 @@
                     action,
                     note,
                     selected_endpoints: JSON.stringify(selectedEndpoints),
+                    selected_services: JSON.stringify(selectedServices),
+                    allow_logs: String(allowLogs),
+                    selected_log_sources: JSON.stringify(selectedLogSources),
                 }),
             })
                 .then(r => r.json())
                 .then(() => {
                     addSectionLog('attack', action === 'approve'
-                        ? `Scope approved by user with ${selectedEndpoints.length} selected endpoint(s).`
+                        ? `Scope approved by user with ${selectedEndpoints.length} endpoint(s), ${selectedServices.length} service(s), logs=${allowLogs}.`
                         : 'Deep verification declined by user.');
                     document.getElementById('consentBox').style.display = 'none';
                     pendingConsent = null;
                 });
+        }
+
+        function renderServices() {
+            const list = document.getElementById('serviceList');
+            if (!serviceDiscoveries.size) {
+                list.innerHTML = '<div class="empty-list">No linked services discovered yet.</div>';
+                return;
+            }
+            list.innerHTML = Array.from(serviceDiscoveries.values())
+                .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+                .slice(0, 12)
+                .map(item => `
+                    <div class="api-item">
+                        <strong>${item.address || 'service'} · ${(item.service_type || item.type || 'service').toUpperCase()} · ${Math.round((item.confidence || 0) * 100)}%</strong>
+                        <div class="api-detail">${item.relation || 'linked'} · ${item.reason || 'Service discovered during recon.'}</div>
+                    </div>
+                `).join('');
         }
 
         function renderAPIs() {
@@ -817,6 +957,20 @@
             `).join('');
         }
 
+        function renderSecurityLogs() {
+            const list = document.getElementById('securityLogList');
+            if (!securityLogs.length) {
+                list.innerHTML = '<div class="empty-list">Approved security logs will stream here.</div>';
+                return;
+            }
+            list.innerHTML = securityLogs.slice(-10).reverse().map(entry => `
+                <div class="mini-log-item">
+                    <div class="stamp">${entry.stamp} · ${entry.service || entry.source || 'log'} · ${entry.log_type || entry.type || 'event'}</div>
+                    <div>${entry.message}</div>
+                </div>
+            `).join('');
+        }
+
         evtSource.onmessage = function(event) {
             const parsed = JSON.parse(event.data);
             const data = parsed.data;
@@ -849,6 +1003,22 @@
                 return;
             }
 
+            if (stream === 'security-logs') {
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+                securityLogs.push({
+                    stamp: timeStr,
+                    message,
+                    service: data.service,
+                    source: data.source,
+                    log_type: data.log_type,
+                    type,
+                });
+                renderSecurityLogs();
+                addSectionLog('attack', message || 'Security log event received');
+                return;
+            }
+
             // ── Determine tag style ──
             let tagClass = 'tag-info';
             let tagLabel = 'INFO';
@@ -876,7 +1046,13 @@
             }
 
             if (type === 'consent-required' || step === 'infrastructure-consent') {
-                showConsentBox(message, data.detected_items, data.review_endpoints || []);
+                showConsentBox(
+                    message,
+                    data.detected_items,
+                    data.review_endpoints || [],
+                    data.services || Array.from(serviceDiscoveries.values()),
+                    data.available_log_sources || ['application', 'system'],
+                );
                 setPhase('consent');
             }
 
@@ -925,6 +1101,13 @@
                 renderAPIs();
                 if (pendingConsent) {
                     renderConsentEndpoints(pendingConsent.reviewEndpoints || Array.from(apiDiscoveries.values()));
+                }
+            }
+            if (type === 'service-discovery' || eventName === 'service_discovery') {
+                serviceDiscoveries.set(data.address || `${data.host}:${data.port}`, data);
+                renderServices();
+                if (pendingConsent) {
+                    renderConsentServices(pendingConsent.reviewServices || Array.from(serviceDiscoveries.values()));
                 }
             }
             if (message) {

@@ -17,14 +17,9 @@ func refineClassification(result *ReconResult) ClassificationResult {
 	if len(result.RASM.DiscoveredEndpoints) > 0 {
 		backendSignals += 2
 	}
-	for _, port := range result.OpenPorts {
-		if !isWebPort(port) {
-			backendSignals++
-		}
-	}
 	for _, service := range result.Services {
 		lower := strings.ToLower(service)
-		if strings.Contains(lower, "mysql") || strings.Contains(lower, "postgres") || strings.Contains(lower, "redis") || strings.Contains(lower, "mongodb") || strings.Contains(lower, "ssh") || strings.Contains(lower, "http server") {
+		if strings.Contains(lower, "backend") || strings.Contains(lower, "database") || strings.Contains(lower, "external") {
 			backendSignals++
 		}
 	}
@@ -46,7 +41,7 @@ func refineClassification(result *ReconResult) ClassificationResult {
 	if targetClass != refined.Class || refined.Confidence < 0.85 {
 		refined.Class = targetClass
 		refined.Confidence = minFloat(0.95, refined.Confidence+0.35)
-		refined.Details = fmt.Sprintf("%s | Refined using open ports (%d), services (%d), backend endpoints (%d)", refined.Details, len(result.OpenPorts), len(result.Services), len(result.RASM.DiscoveredEndpoints))
+		refined.Details = fmt.Sprintf("%s | Refined using observed services (%d) and backend endpoints (%d)", refined.Details, len(result.Services), len(result.RASM.DiscoveredEndpoints))
 	}
 
 	return refined
@@ -54,34 +49,25 @@ func refineClassification(result *ReconResult) ClassificationResult {
 
 func detectConsentRequirement(targetURL string, result *ReconResult) ConsentRequirement {
 	req := ConsentRequirement{
+		Required:      true,
+		Reason:        "Review observed application scope before controlled testing continues",
 		DetectedItems: []string{},
 	}
 
-	for _, port := range result.OpenPorts {
-		if isWebPort(port) {
-			continue
-		}
-		req.DetectedItems = append(req.DetectedItems, fmt.Sprintf("Port %d open", port))
+	req.DetectedItems = append(req.DetectedItems, fmt.Sprintf("Frontend %s", targetURL))
+	for address, service := range result.Services {
+		req.DetectedItems = append(req.DetectedItems, fmt.Sprintf("Observed service %s (%s)", address, service))
 	}
-	for port, service := range result.Services {
-		lower := strings.ToLower(service)
-		if strings.Contains(lower, "mysql") || strings.Contains(lower, "postgres") || strings.Contains(lower, "redis") || strings.Contains(lower, "mongodb") || strings.Contains(lower, "ssh") {
-			req.DetectedItems = append(req.DetectedItems, fmt.Sprintf("Service %s on %s", service, port))
-		}
+	for _, endpoint := range result.RASM.ReviewEndpoints {
+		req.DetectedItems = append(req.DetectedItems, fmt.Sprintf("Observed endpoint %s", endpoint.Normalized))
 	}
 
-	if len(req.DetectedItems) == 0 {
-		return req
-	}
-
-	req.Required = true
-	req.Reason = "Detected backend/server-side infrastructure beyond the web entrypoint"
 	req.Deployment = deploymentType(targetURL, result.DNS.ResolvedIP)
 
 	if req.Deployment == "hosted" {
-		req.Message = "Additional hosted server-side infrastructure was detected. For security, run or mirror the backend locally before deep verification. Approve only if this infrastructure is part of the same project and in scope."
+		req.Message = "Observed application behavior suggests internal and possibly external dependencies. If this application is hosted online, consider running a local version for deeper analysis and better log access. Approve only the services and endpoints that belong to this project."
 	} else {
-		req.Message = "Additional local or same-project server-side infrastructure was detected. Confirm whether SPECTRE should use it for deeper verification before attacks proceed."
+		req.Message = "Behavior-based discovery is complete. Review the observed services, endpoints, and optional logs, then approve only what SPECTRE may use for controlled testing."
 	}
 
 	return req

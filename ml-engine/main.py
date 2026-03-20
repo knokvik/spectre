@@ -1,9 +1,10 @@
 """
 SPECTRE ML Engine — Vulnerability Prediction Service
 
-Consumes recon data (open ports, headers, TLS info, error probes)
-and predicts which vulnerability categories are most likely present.
-Uses a weighted rule-based model — no heavy ML libraries needed.
+Consumes behavior-driven recon data, observed services/endpoints,
+and normalized log signals to predict which vulnerability categories
+are most likely present.
+Uses a hybrid pickled model when available, with a weighted rule fallback.
 """
 
 import json
@@ -12,6 +13,7 @@ import time
 import logging
 from typing import Optional
 import resource
+import pickle
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -23,6 +25,8 @@ import uvicorn
 # ---------------------------------------------------------------------------
 REDIS_ADDR = os.getenv("REDIS_ADDR", "localhost:6379")
 REDIS_HOST, REDIS_PORT = REDIS_ADDR.split(":")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.getenv("MODEL_PATH", os.path.join(BASE_DIR, "model.pkl"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [ml-engine] %(message)s")
 log = logging.getLogger("ml-engine")
@@ -33,6 +37,7 @@ app = FastAPI(title="SPECTRE ML Engine", version="1.0.0")
 # Redis client (lazy init)
 # ---------------------------------------------------------------------------
 _redis: Optional[redis.Redis] = None
+_model = None
 
 
 def get_redis() -> redis.Redis:
@@ -42,6 +47,24 @@ def get_redis() -> redis.Redis:
         _redis.ping()
         log.info("Connected to Redis at %s", REDIS_ADDR)
     return _redis
+
+
+def load_model():
+    global _model
+    if _model is not None:
+        return _model
+    if not os.path.exists(MODEL_PATH):
+        log.info("No pickle model found at %s, using hybrid fallback", MODEL_PATH)
+        _model = {}
+        return _model
+    try:
+        with open(MODEL_PATH, "rb") as fh:
+            _model = pickle.load(fh)
+        log.info("Loaded pickle model from %s", MODEL_PATH)
+    except Exception as exc:
+        log.warning("Failed to load pickle model (%s), using hybrid fallback", exc)
+        _model = {}
+    return _model
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +91,14 @@ class ReconData(BaseModel):
     graphql_endpoint_count: int = 0
     idor_candidate_count: int = 0
     auth_surface_count: int = 0
+    service_inventory: list[dict] = []
+    service_count: int = 0
+    backend_service_count: int = 0
+    db_service_count: int = 0
+    external_service_count: int = 0
+    request_count: int = 0
+    logs_enabled: bool = False
+    log_signals: dict = {}
 
 
 class VulnPrediction(BaseModel):
@@ -87,13 +118,6 @@ class PredictionResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Feature Extraction
 # ---------------------------------------------------------------------------
-RISKY_PORTS = {
-    21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 3306: "mysql",
-    5432: "postgres", 6379: "redis", 27017: "mongodb", 11211: "memcached",
-    9200: "elasticsearch", 5900: "vnc", 1433: "mssql", 1521: "oracle",
-    8080: "http-alt", 8443: "https-alt", 445: "smb", 139: "netbios",
-}
-
 SECURITY_HEADERS = [
     "X-Frame-Options", "X-Content-Type-Options", "Content-Security-Policy",
     "Strict-Transport-Security", "Referrer-Policy",
@@ -102,14 +126,6 @@ SECURITY_HEADERS = [
 
 def extract_features(data: ReconData) -> dict:
     """Convert raw recon data into a numerical feature vector."""
-    open_set = set(data.open_ports)
-
-    # Port-based features
-    db_ports_open = len(open_set & {3306, 5432, 27017, 1433, 1521})
-    cache_ports_open = len(open_set & {6379, 11211})
-    risky_ports_open = len(open_set & set(RISKY_PORTS.keys()))
-    total_open = len(data.open_ports)
-
     # Header-based features
     missing_count = len(data.missing_headers)
     has_server_leak = 1 if data.server_header else 0
@@ -132,12 +148,10 @@ def extract_features(data: ReconData) -> dict:
     backend_class = 1 if data.url_classification in ("api-only", "full-backend", "graphql", "microservice-cluster") else 0
     frontend_only = 1 if data.url_classification == "frontend-only" else 0
     backend_endpoints = data.backend_endpoint_count or len(data.backend_endpoints)
+    log_signals = data.log_signals or {}
+    request_spikes = int(log_signals.get("request_spikes", 0))
 
     return {
-        "total_open_ports": total_open,
-        "db_ports_open": db_ports_open,
-        "cache_ports_open": cache_ports_open,
-        "risky_ports_open": risky_ports_open,
         "missing_security_headers": missing_count,
         "server_header_leak": has_server_leak,
         "powered_by_leak": has_powered_by,
@@ -156,6 +170,24 @@ def extract_features(data: ReconData) -> dict:
         "graphql_endpoint_count": data.graphql_endpoint_count,
         "idor_candidate_count": data.idor_candidate_count,
         "auth_surface_count": data.auth_surface_count,
+        "service_count": data.service_count or len(data.service_inventory),
+        "backend_service_count": data.backend_service_count,
+        "db_service_count": data.db_service_count,
+        "external_service_count": data.external_service_count,
+        "request_count": data.request_count,
+        "logs_enabled": 1 if data.logs_enabled else 0,
+        "log_error_rate": float(log_signals.get("error_rate", 0.0)),
+        "log_auth_failures": int(log_signals.get("auth_failures", 0)),
+        "log_db_errors": int(log_signals.get("db_errors", 0)),
+        "log_unusual_requests": int(log_signals.get("unusual_requests", 0)),
+        "log_stack_traces": int(log_signals.get("stack_traces", 0)),
+        "log_anomaly_count": int(log_signals.get("anomaly_count", 0)),
+        "request_spikes": request_spikes,
+        "api_count": backend_endpoints,
+        "error_rate": float(log_signals.get("error_rate", 0.0)),
+        "auth_failures": int(log_signals.get("auth_failures", 0)),
+        "db_errors": int(log_signals.get("db_errors", 0)),
+        "anomaly_score": int(log_signals.get("anomaly_count", 0)),
     }
 
 
@@ -175,9 +207,9 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
     if features["sqli_signal"]:
         sqli_score += 0.50
         reasons_sqli.append("SQL error detected in error-probe response")
-    if features["db_ports_open"] > 0:
+    if features["db_service_count"] > 0:
         sqli_score += 0.25
-        reasons_sqli.append(f"{features['db_ports_open']} database port(s) exposed")
+        reasons_sqli.append(f"{features['db_service_count']} database-backed service(s) observed")
     if features["stack_trace_detected"]:
         sqli_score += 0.15
         reasons_sqli.append("Stack trace leakage detected")
@@ -190,6 +222,15 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
     if features["url_is_backend"]:
         sqli_score += 0.10
         reasons_sqli.append("URL classification indicates backend/API behavior")
+    if features["log_db_errors"] > 0:
+        sqli_score += min(0.30, features["log_db_errors"] * 0.03)
+        reasons_sqli.append(f"{features['log_db_errors']} database error log event(s) observed")
+    if features["log_stack_traces"] > 0:
+        sqli_score += 0.10
+        reasons_sqli.append("Log stack traces indicate backend exception leakage")
+    if features["request_spikes"] > 0:
+        sqli_score += min(0.12, features["request_spikes"] * 0.04)
+        reasons_sqli.append(f"{features['request_spikes']} request spike signal(s) observed")
     sqli_score = min(sqli_score, 1.0)
     if sqli_score >= 0.15:
         predictions.append(VulnPrediction(
@@ -214,6 +255,9 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
     if features["graphql_endpoint_count"] > 0:
         idor_score += 0.10
         reasons_idor.append("GraphQL endpoint may expose object traversal paths")
+    if features["service_count"] >= 3:
+        idor_score += 0.08
+        reasons_idor.append("Multi-service topology increases cross-service object exposure")
     idor_score = min(idor_score, 1.0)
     if idor_score >= 0.15:
         predictions.append(VulnPrediction(
@@ -238,6 +282,9 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
     if features["missing_security_headers"] >= 3:
         auth_score += 0.10
         reasons_auth.append("Weak browser-side security headers may amplify auth risk")
+    if features["log_auth_failures"] > 0:
+        auth_score += min(0.25, features["log_auth_failures"] * 0.02)
+        reasons_auth.append(f"{features['log_auth_failures']} authentication failure log event(s) observed")
     auth_score = min(auth_score, 1.0)
     if auth_score >= 0.15:
         predictions.append(VulnPrediction(
@@ -263,6 +310,9 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
     if features["powered_by_leak"]:
         xss_score += 0.10
         reasons_xss.append("X-Powered-By header reveals tech stack")
+    if features["log_error_rate"] >= 0.2:
+        xss_score += 0.08
+        reasons_xss.append("Elevated application error rate suggests fragile input handling")
     xss_score = min(xss_score, 1.0)
     if xss_score >= 0.15:
         predictions.append(VulnPrediction(
@@ -285,6 +335,9 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
     if features["server_header_leak"]:
         traversal_score += 0.10
         reasons_trav.append("Server header reveals software version")
+    if features["log_unusual_requests"] > 0:
+        traversal_score += min(0.20, features["log_unusual_requests"] * 0.03)
+        reasons_trav.append(f"{features['log_unusual_requests']} suspicious request log event(s) observed")
     traversal_score = min(traversal_score, 1.0)
     if traversal_score >= 0.15:
         predictions.append(VulnPrediction(
@@ -310,6 +363,9 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
     if features["robots_found"] and features["hidden_paths_count"] > 0:
         info_score += 0.15
         reasons_info.append("robots.txt reveals hidden directories")
+    if features["log_stack_traces"] > 0:
+        info_score += 0.20
+        reasons_info.append("Logs expose stack traces or exception details")
     info_score = min(info_score, 1.0)
     if info_score >= 0.15:
         predictions.append(VulnPrediction(
@@ -326,15 +382,15 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
     if features["missing_security_headers"] >= 4:
         misconfig_score += 0.35
         reasons_misc.append("Most security headers absent")
-    if features["risky_ports_open"] >= 3:
-        misconfig_score += 0.25
-        reasons_misc.append(f"{features['risky_ports_open']} risky ports exposed")
-    if features["cache_ports_open"] > 0:
-        misconfig_score += 0.20
-        reasons_misc.append("Cache ports (Redis/Memcached) exposed")
+    if features["external_service_count"] > 0:
+        misconfig_score += 0.16
+        reasons_misc.append(f"{features['external_service_count']} external dependency surface(s) observed")
     if features["no_tls"]:
         misconfig_score += 0.20
         reasons_misc.append("No TLS configured")
+    if features["db_service_count"] > 0:
+        misconfig_score += 0.10
+        reasons_misc.append(f"{features['db_service_count']} database service(s) observed")
     misconfig_score = min(misconfig_score, 1.0)
     if misconfig_score >= 0.15:
         predictions.append(VulnPrediction(
@@ -366,6 +422,54 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
     # Sort by confidence descending
     predictions.sort(key=lambda p: p.confidence, reverse=True)
     return predictions
+
+
+def predict_with_pickle_model(features: dict) -> list[VulnPrediction]:
+    model = load_model()
+    if not model:
+        return []
+    feature_order = model.get("feature_order", [])
+    class_profiles = model.get("class_profiles", {})
+    if not feature_order or not class_profiles:
+        return []
+
+    ordered_values = {name: float(features.get(name, 0)) for name in feature_order}
+    predictions: list[VulnPrediction] = []
+    for category, profile in class_profiles.items():
+        score = float(profile.get("bias", 0.0))
+        matches = []
+        for feature_name in feature_order:
+            weight = float(profile.get("weights", {}).get(feature_name, 0.0))
+            if weight == 0:
+                continue
+            contribution = ordered_values[feature_name] * weight
+            score += contribution
+            if contribution > 0.05:
+                matches.append(f"{feature_name}={ordered_values[feature_name]:.2f}")
+        confidence = max(0.0, min(score, 0.99))
+        threshold = float(profile.get("threshold", 0.15))
+        if confidence >= threshold:
+            predictions.append(VulnPrediction(
+                category=category,
+                confidence=round(confidence, 2),
+                reasoning="Pickle model signals: " + ", ".join(matches[:4]) if matches else "Pickle model baseline confidence",
+                recommended_payloads=profile.get("recommended_payloads", []),
+            ))
+    predictions.sort(key=lambda p: p.confidence, reverse=True)
+    return predictions
+
+
+def merge_predictions(model_predictions: list[VulnPrediction], rule_predictions: list[VulnPrediction]) -> list[VulnPrediction]:
+    merged: dict[str, VulnPrediction] = {}
+    for pred in rule_predictions:
+        merged[pred.category] = pred
+    for pred in model_predictions:
+        existing = merged.get(pred.category)
+        if existing is None or pred.confidence > existing.confidence:
+            merged[pred.category] = pred
+        elif existing is not None:
+            existing.reasoning = f"{existing.reasoning}; {pred.reasoning}"
+    return sorted(merged.values(), key=lambda item: item.confidence, reverse=True)
 
 
 # ---------------------------------------------------------------------------
@@ -432,7 +536,9 @@ def predict(data: ReconData):
     started = time.perf_counter()
 
     features = extract_features(data)
-    predictions = predict_vulnerabilities(features)
+    rule_predictions = predict_vulnerabilities(features)
+    pickle_predictions = predict_with_pickle_model(features)
+    predictions = merge_predictions(pickle_predictions, rule_predictions)
 
     log.info("Predicted %d vulnerability categories for session %s", len(predictions), data.session_id)
     publish_service_metric(
@@ -443,6 +549,9 @@ def predict(data: ReconData):
             "predictions": len(predictions),
             "backend_endpoints": features["backend_endpoint_count"],
             "graphql_endpoints": features["graphql_endpoint_count"],
+            "services": features["service_count"],
+            "anomaly_count": features["log_anomaly_count"],
+            "model_source": "pickle+rules" if pickle_predictions else "rules",
             "duration_ms": round((time.perf_counter() - started) * 1000, 2),
         },
     )

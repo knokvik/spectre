@@ -190,6 +190,33 @@
 
         /* Hidden consent fields auto-checked */
         .hidden { display: none; }
+        .check-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.02);
+        }
+        .check-group label {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            font-size: 0.78rem;
+            line-height: 1.6;
+            color: var(--text);
+        }
+        .check-group input[type="checkbox"] {
+            margin-top: 3px;
+        }
+        .hint {
+            margin: -8px 0 18px;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            line-height: 1.6;
+        }
     </style>
 </head>
 <body>
@@ -212,13 +239,22 @@
                 <input type="text" name="address" id="addressField" placeholder="Ops contact, office address, or engagement note">
             </div>
 
+            <div class="input-group">
+                <label>LOG PATHS (OPTIONAL)</label>
+                <input type="text" name="log_paths" placeholder="/tmp/app.log,/tmp/backend.log">
+            </div>
+
             <div class="reuse-banner" id="reuseBanner">
                 A previously used address/contact note is available for this browser session.
                 <button type="button" id="reuseAddressBtn">Use saved address</button>
             </div>
 
             <div class="auto-note">
-                Scope is detected automatically. SPECTRE will inspect both the web surface and server-side evidence, then pause for consent if deeper infrastructure verification is discovered.
+                SPECTRE now uses behavior-based discovery only. It observes the provided application entrypoint and approved logs, then pauses for scope review before any deeper checks.
+            </div>
+
+            <div class="hint">
+                If this application is hosted online, consider running a local version for deeper analysis and better log access.
             </div>
 
             <div class="options">
@@ -230,6 +266,12 @@
                         <option value="thorough">Thorough</option>
                     </select>
                 </div>
+            </div>
+
+            <div class="check-group">
+                <label><input type="checkbox" name="observe_traffic" checked required> Allow traffic observation for the provided target. SPECTRE will inspect only requests and resources observed from this application entrypoint.</label>
+                <label><input type="checkbox" name="allow_log_ingestion"> Allow log ingestion if log files are available. Only approved log sources will be used.</label>
+                <label><input type="checkbox" name="authorization_confirmed" required> I confirm I am authorized to scan this target and any services I explicitly approve.</label>
             </div>
 
             <!-- Auto-checked hidden consent fields (still validated server-side) -->

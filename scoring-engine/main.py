@@ -61,6 +61,17 @@ class ScoreRequest(BaseModel):
     weak_tls: bool = False
     total_open_ports: int = 0
     risky_ports_open: int = 0
+    service_count: int = 0
+    api_count: int = 0
+    request_count: int = 0
+    error_rate: float = 0.0
+    auth_failures: int = 0
+    db_errors: int = 0
+    anomaly_count: int = 0
+    request_spikes: int = 0
+    epss_score: float = 0.0
+    kev_hits: int = 0
+    exploit_references: int = 0
 
 
 class ScoreBreakdown(BaseModel):
@@ -78,6 +89,10 @@ class ScoreResponse(BaseModel):
     risk_score: float                 # 0.0 – 10.0
     risk_level: str                   # CRITICAL, HIGH, MEDIUM, LOW
     risk_grade: str                   # A, B, C, D, F
+    ebss_score: int
+    ebss_grade: str
+    confidence: float
+    priority: str
     breakdown: ScoreBreakdown
     summary: str
     timestamp: str
@@ -125,17 +140,28 @@ def compute_score(req: ScoreRequest) -> tuple[float, ScoreBreakdown]:
     elif req.missing_security_headers >= 1:
         surface_score += 1.0
 
-    if req.risky_ports_open >= 5:
-        surface_score += 4.0
-    elif req.risky_ports_open >= 3:
-        surface_score += 2.5
-    elif req.risky_ports_open >= 1:
-        surface_score += 1.5
+    if req.api_count >= 8:
+        surface_score += 3.0
+    elif req.api_count >= 3:
+        surface_score += 1.8
+    elif req.api_count >= 1:
+        surface_score += 0.8
 
-    if req.total_open_ports >= 10:
+    if req.service_count >= 4:
         surface_score += 2.0
-    elif req.total_open_ports >= 5:
+    elif req.service_count >= 2:
         surface_score += 1.0
+
+    if req.request_count >= 20:
+        surface_score += 1.5
+    elif req.request_count >= 8:
+        surface_score += 0.8
+    if req.anomaly_count >= 5:
+        surface_score += 1.5
+    elif req.anomaly_count >= 1:
+        surface_score += 0.75
+    if req.request_spikes >= 1:
+        surface_score += min(req.request_spikes * 0.5, 1.5)
 
     surface_score = min(surface_score, 10.0)
 
@@ -143,6 +169,12 @@ def compute_score(req: ScoreRequest) -> tuple[float, ScoreBreakdown]:
     exposure_score = 0.0
     if req.weak_tls:
         exposure_score += 7.0
+    if req.db_errors >= 5:
+        exposure_score += 1.5
+    if req.auth_failures >= 10:
+        exposure_score += 1.0
+    if req.error_rate >= 0.2:
+        exposure_score += 1.0
     # No TLS at all would be caught as weak_tls too
     exposure_score = min(exposure_score, 10.0)
 
@@ -202,6 +234,37 @@ def score_to_grade(score: float) -> str:
         return "D"
     else:
         return "F"
+
+
+def compute_ebss(req: ScoreRequest, risk_score: float, breakdown: ScoreBreakdown) -> tuple[int, str, float, str]:
+    ml_component = min(risk_score * 10, 40)
+    log_component = min((req.error_rate * 25) + (req.db_errors * 1.5) + (req.auth_failures * 0.5) + (req.anomaly_count * 1.2), 20)
+    intel_component = min((req.epss_score * 20) + (req.kev_hits * 6) + (req.exploit_references * 2), 30)
+    behavior_component = min((req.api_count * 1.5) + (req.service_count * 1.2) + (req.request_spikes * 2), 10)
+    total = int(round(min(100, ml_component + log_component + intel_component + behavior_component)))
+
+    if total >= 90:
+        grade = "A"
+    elif total >= 80:
+        grade = "A-"
+    elif total >= 70:
+        grade = "B"
+    elif total >= 60:
+        grade = "C"
+    else:
+        grade = "D"
+
+    if total >= 85:
+        priority = "CRITICAL"
+    elif total >= 70:
+        priority = "HIGH"
+    elif total >= 50:
+        priority = "MEDIUM"
+    else:
+        priority = "LOW"
+
+    confidence = round(min(0.99, 0.45 + (breakdown.confirmed_findings * 0.08) + (req.epss_score * 0.2) + min(req.anomaly_count, 5) * 0.03), 2)
+    return total, grade, confidence, priority
 
 
 def generate_summary(risk_level: str, breakdown: ScoreBreakdown) -> str:
@@ -307,11 +370,16 @@ def score(req: ScoreRequest):
     summary = generate_summary(risk_level, breakdown)
 
     now = time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    ebss_score, ebss_grade, confidence, priority = compute_ebss(req, risk_score, breakdown)
     response = ScoreResponse(
         session_id=req.session_id,
         risk_score=risk_score,
         risk_level=risk_level,
         risk_grade=risk_grade,
+        ebss_score=ebss_score,
+        ebss_grade=ebss_grade,
+        confidence=confidence,
+        priority=priority,
         breakdown=breakdown,
         summary=summary,
         timestamp=now,
@@ -326,6 +394,8 @@ def score(req: ScoreRequest):
             "findings": len(req.findings),
             "risk_score": response.risk_score,
             "risk_level": response.risk_level,
+            "ebss_score": response.ebss_score,
+            "priority": response.priority,
             "duration_ms": round((time.perf_counter() - started) * 1000, 2),
         },
     )

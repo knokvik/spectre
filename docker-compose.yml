@@ -28,11 +28,13 @@ services:
       - ML_ENGINE_URL=http://ml-engine:5001
       - LLM_CLASSIFIER_URL=http://llm-classifier:5002
       - SCORING_ENGINE_URL=http://scoring-engine:5003
+      - INTEL_SERVICE_URL=http://intel-service:5004
     depends_on:
       - redis
       - ml-engine
       - llm-classifier
       - scoring-engine
+      - intel-service
 
   redis:
     image: redis:7.2
@@ -65,6 +67,16 @@ services:
       context: ./scoring-engine
     ports:
       - "5003:5003"
+    environment:
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      - redis
+
+  intel-service:
+    build:
+      context: ./intel-service
+    ports:
+      - "5004:5004"
     environment:
       - REDIS_ADDR=redis:6379
     depends_on:
