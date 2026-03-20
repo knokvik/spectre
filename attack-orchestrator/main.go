@@ -63,7 +63,10 @@ var reconData sync.Map // sessionID -> *ReconCollector
 
 func getCollector(sessionID string) *ReconCollector {
 	val, loaded := reconData.LoadOrStore(sessionID, &ReconCollector{
-		TLSAvailable: true,
+		TLSAvailable:    true,
+		OpenPorts:       []int{},
+		MissingHeaders:  []string{},
+		DisallowedPaths: []string{},
 	})
 	if !loaded {
 		log.Printf("[attack-orchestrator] Created recon collector for session %s", sessionID)
@@ -463,62 +466,32 @@ func runMLPipeline(ctx context.Context, sessionID, targetURL string) {
 		time.Sleep(300 * time.Millisecond)
 	}
 
-	// ── Phase 2: Targeted Attacks ──────────────────────────────────
-	publishPhaseUpdate(ctx, sessionID, "attack")
-	publishAttackEvent(ctx, sessionID, "info", "⚔️ Launching targeted attacks based on ML predictions...")
+	// ── Phase 2: Analytical Assessment (Active Attacking Disabled) ──
+	publishPhaseUpdate(ctx, sessionID, "attack") // (Wait, maybe just jump to score/classification logically)
+	publishAttackEvent(ctx, sessionID, "info", "🔍 Analyzing ML predictions (active exploit execution is disabled)...")
 	time.Sleep(1 * time.Second)
 
 	var findings []ScoreFinding
 
 	for _, pred := range mlResult.Predictions {
-		// Check cancellation between attacks
 		if ctx.Err() != nil {
 			publishAttackEvent(context.Background(), sessionID, "warning", "⛔ Assessment stopped by user.")
 			publishPhaseUpdate(context.Background(), sessionID, "report")
 			return
 		}
 
-		if len(pred.RecommendedPayloads) == 0 {
-			// Config-based finding (e.g. weak TLS) — no active attack needed
-			publishAttackEvent(ctx, sessionID, "warning",
-				fmt.Sprintf("[%s] Configuration issue detected (no active exploit needed)", pred.Category))
-			
-			classification := classifyFinding(ctx, sessionID, pred.Category, "Configuration weakness detected", 0, pred.Confidence, baseURL)
-			findings = append(findings, ScoreFinding{
-				Type:          pred.Category,
-				Severity:      classification.Severity,
-				SeverityScore: classification.SeverityScore,
-				Confirmed:     false,
-			})
-			continue
-		}
+		// Skip firing payload, just record the prediction
+		resultMsg := fmt.Sprintf("ML Engine predicted this vulnerability with %.0f%% confidence", pred.Confidence*100)
+		classification := classifyFinding(ctx, sessionID, pred.Category, resultMsg, 0, pred.Confidence, baseURL)
+		
+		findings = append(findings, ScoreFinding{
+			Type:          pred.Category,
+			Severity:      classification.Severity,
+			SeverityScore: classification.SeverityScore,
+			Confirmed:     false, // Can't confirm since we don't exploit
+		})
 
-		// Fire up to 2 payloads per category
-		payloads := pred.RecommendedPayloads
-		if len(payloads) > 2 {
-			payloads = payloads[:2]
-		}
-
-		for _, payload := range payloads {
-			if ctx.Err() != nil {
-				publishAttackEvent(context.Background(), sessionID, "warning", "⛔ Assessment stopped by user.")
-				publishPhaseUpdate(context.Background(), sessionID, "report")
-				return
-			}
-
-			attackURL := buildAttackURL(baseURL, pred.Category, payload)
-			result, status, confirmed := fireMLPayload(ctx, sessionID, pred.Category, attackURL, payload)
-
-			classification := classifyFinding(ctx, sessionID, pred.Category, result, status, pred.Confidence, baseURL)
-			findings = append(findings, ScoreFinding{
-				Type:          pred.Category,
-				Severity:      classification.Severity,
-				SeverityScore: classification.SeverityScore,
-				Confirmed:     confirmed,
-			})
-
-			time.Sleep(800 * time.Millisecond)
-		}
+		time.Sleep(300 * time.Millisecond)
 	}
 
 	// ── Phase 3: Scoring ──────────────────────────────────────────

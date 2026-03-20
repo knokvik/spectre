@@ -18,17 +18,20 @@ redis-cli FLUSHALL > /dev/null 2>&1
 # Ensure all background jobs are gracefully killed when the script stops
 trap "echo -e '\nStopping all SPECTRE services...'; kill 0" EXIT
 
-# Tell all Go services to connect to your native local Redis
+# Tell all Go services to connect to your native local Redis and use IPv4 loopback for Python services
 export REDIS_ADDR="localhost:6379"
+export ML_ENGINE_URL="http://127.0.0.1:5001"
+export LLM_CLASSIFIER_URL="http://127.0.0.1:5002"
+export SCORING_ENGINE_URL="http://127.0.0.1:5003"
 
 echo "[1/6] Starting ML Engine (Port 5001)..."
-(cd ml-engine && pip install -q -r requirements.txt 2>/dev/null && python -m uvicorn main:app --port 5001 --log-level warning) &
+(cd ml-engine && python3 -m pip install -q -r requirements.txt 2>/dev/null && python3 -m uvicorn main:app --port 5001 --log-level warning) &
 
 echo "[2/6] Starting LLM Classifier (Port 5002)..."
-(cd llm-classifier && pip install -q -r requirements.txt 2>/dev/null && python -m uvicorn main:app --port 5002 --log-level warning) &
+(cd llm-classifier && python3 -m pip install -q -r requirements.txt 2>/dev/null && python3 -m uvicorn main:app --port 5002 --log-level warning) &
 
 echo "[3/6] Starting Scoring Engine (Port 5003)..."
-(cd scoring-engine && pip install -q -r requirements.txt 2>/dev/null && python -m uvicorn main:app --port 5003 --log-level warning) &
+(cd scoring-engine && python3 -m pip install -q -r requirements.txt 2>/dev/null && python3 -m uvicorn main:app --port 5003 --log-level warning) &
 
 # Give Python services a moment to start
 sleep 2

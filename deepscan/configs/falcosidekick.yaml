@@ -1,0 +1,47 @@
+# ============================================================================
+# falcosidekick Configuration — DeepScan Enhanced Task 1.5
+# Routes Falco JSON alerts → Elasticsearch (deepscan-falco index)
+# Reference: https://github.com/falcosecurity/falcosidekick/blob/master/docs/outputs/elasticsearch.md
+# ============================================================================
+#
+# NOTE: This file is provided as reference documentation.
+# In docker-compose.yml we use environment variables instead (recommended
+# for Docker deployments). falcosidekick reads env vars automatically.
+#
+# The equivalent env vars in docker-compose.yml are:
+#   ELASTICSEARCH_HOSTPORT=http://elasticsearch:9200
+#   ELASTICSEARCH_INDEX=deepscan-falco
+#   ELASTICSEARCH_TYPE=_doc
+#   ELASTICSEARCH_BATCHING_ENABLED=true
+#   ELASTICSEARCH_BATCHING_BATCHSIZE=5
+#   ELASTICSEARCH_BATCHING_FLUSHINTERVAL=2
+#   ELASTICSEARCH_CREATEINDEXTEMPLATE=true
+#   ELASTICSEARCH_FLATTENFIELDS=true
+#
+# If you prefer file-based config, mount this file as:
+#   volumes:
+#     - ./configs/falcosidekick.yaml:/etc/falcosidekick/config.yaml:ro
+# ============================================================================
+
+# ── Debug ───────────────────────────────────────────────────────────────────
+debug: false
+
+# ── Custom Fields (added to every Falco event) ──────────────────────────────
+customfields:
+  environment: "deepscan"
+  pipeline: "real-time"
+
+# ── Elasticsearch Output ────────────────────────────────────────────────────
+elasticsearch:
+  hostport: "http://elasticsearch:9200"
+  index: "deepscan-falco"
+  type: "_doc"
+  # Flatten output_fields into top-level keys to avoid mapping conflicts
+  flattenfields: true
+  # Auto-create index template with proper mappings
+  createindextemplate: true
+  # Batching: flush every 2s or when 5 events accumulate (whichever first)
+  batching:
+    enabled: true
+    batchsize: 5
+    flushinterval: 2

@@ -1,0 +1,55 @@
+# ============================================================================
+# Falco Configuration — DeepScan Enhanced Task 1.5
+# JSON output → falcosidekick HTTP endpoint
+# ============================================================================
+
+# ── Engine ──────────────────────────────────────────────────────────────────
+# Use modern eBPF driver (no kernel module required)
+engine:
+  kind: modern_ebpf
+
+# ── Output Settings ─────────────────────────────────────────────────────────
+json_output: true
+json_include_output_property: true
+json_include_tags_property: true
+
+# Disable default stdout (all output goes to sidekick)
+stdout_output:
+  enabled: false
+
+syslog_output:
+  enabled: false
+
+file_output:
+  enabled: false
+
+# ── HTTP Output → falcosidekick ─────────────────────────────────────────────
+http_output:
+  enabled: true
+  url: http://falcosidekick:2801
+  user_agent: "falco/deepscan"
+
+# ── Logging ─────────────────────────────────────────────────────────────────
+log_stderr: true
+log_level: info
+
+# ── Performance ─────────────────────────────────────────────────────────────
+outputs_queue:
+  capacity: 1024
+
+# ── Rules ───────────────────────────────────────────────────────────────────
+rules_files:
+  - /etc/falco/falco_rules.yaml
+  - /etc/falco/falco_rules.local.yaml
+
+# ── Priority ────────────────────────────────────────────────────────────────
+priority: notice
+
+# ── Buffered Outputs ────────────────────────────────────────────────────────
+buffered_outputs: true
+
+# ── Metadata ────────────────────────────────────────────────────────────────
+metadata_download:
+  max_mb: 100
+  chunk_wait_us: 1000
+  watch_freq_sec: 1
