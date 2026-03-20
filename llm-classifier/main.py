@@ -11,6 +11,7 @@ import os
 import time
 import logging
 from typing import Optional
+import resource
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -56,6 +57,7 @@ class ClassifyRequest(BaseModel):
     http_status: int = 0
     confidence: float = 0.0          # ML prediction confidence
     target_url: str = ""
+    url_classification: str = ""
 
 
 class ClassifyResponse(BaseModel):
@@ -79,6 +81,7 @@ Attack Result: {attack_result}
 HTTP Status Code: {http_status}
 ML Confidence Score: {confidence}
 Target URL: {target_url}
+URL Classification: {url_classification}
 
 Based on the above information, classify the severity of this vulnerability.
 Respond in EXACTLY this JSON format, nothing else:
@@ -98,6 +101,7 @@ async def classify_with_ollama(req: ClassifyRequest) -> Optional[dict]:
         http_status=req.http_status,
         confidence=req.confidence,
         target_url=req.target_url,
+        url_classification=req.url_classification,
     )
 
     try:
@@ -131,6 +135,18 @@ SEVERITY_RULES = {
         "severity_score": 8.5,
         "description": "SQL injection can lead to unauthorized data access, modification, or deletion of database contents.",
         "remediation": "Use parameterized queries/prepared statements. Implement input validation and ORM-based data access.",
+    },
+    "Insecure Direct Object Reference (IDOR)": {
+        "severity": "HIGH",
+        "severity_score": 8.0,
+        "description": "IDOR flaws can expose other users' records and business data through predictable object references.",
+        "remediation": "Enforce ownership checks on every object fetch. Do not rely on obscured IDs or client-side filtering.",
+    },
+    "Weak Authentication / Authorization": {
+        "severity": "HIGH",
+        "severity_score": 8.2,
+        "description": "Weak auth or authorization handling may permit account takeover or unauthorized API actions.",
+        "remediation": "Verify session, token, and role checks on every sensitive endpoint. Harden login and token workflows.",
     },
     "Cross-Site Scripting (XSS)": {
         "severity": "MEDIUM",
@@ -181,6 +197,8 @@ def classify_rule_based(req: ClassifyRequest) -> dict:
         rule["severity_score"] = min(rule["severity_score"] + 1.0, 10.0)
     if req.http_status == 500:
         rule["severity_score"] = min(rule["severity_score"] + 0.5, 10.0)
+    if req.url_classification in {"api-only", "full-backend", "graphql", "microservice-cluster"} and req.vulnerability_type in {"SQL Injection", "Insecure Direct Object Reference (IDOR)", "Weak Authentication / Authorization"}:
+        rule["severity_score"] = min(rule["severity_score"] + 0.7, 10.0)
 
     # Promote to CRITICAL if score is >= 9.0
     if rule["severity_score"] >= 9.0:
@@ -221,6 +239,27 @@ def publish_classification(session_id: str, resp: ClassifyResponse):
         log.warning("Failed to publish classification to Redis: %s", e)
 
 
+def publish_service_metric(session_id: str, phase: str, impact: str, extra: Optional[dict] = None):
+    try:
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        payload = {
+            "session_id": session_id,
+            "service": "llm-classifier",
+            "phase": phase,
+            "impact": impact,
+            "type": "service-metric",
+            "memory_mb": round(usage.ru_maxrss / 1024, 2),
+            "cpu_user_s": round(usage.ru_utime, 3),
+            "cpu_system_s": round(usage.ru_stime, 3),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        }
+        if extra:
+            payload.update(extra)
+        get_redis().xadd("service-metrics", {"payload": json.dumps(payload)})
+    except Exception as e:
+        log.warning("Failed to publish service metric: %s", e)
+
+
 # ---------------------------------------------------------------------------
 # API Endpoints
 # ---------------------------------------------------------------------------
@@ -236,6 +275,7 @@ async def classify(req: ClassifyRequest):
         raise HTTPException(status_code=400, detail="session_id is required")
 
     log.info("Classifying %s for session %s", req.vulnerability_type, req.session_id)
+    started = time.perf_counter()
 
     # Try Ollama first
     ollama_result = await classify_with_ollama(req)
@@ -259,6 +299,17 @@ async def classify(req: ClassifyRequest):
     )
 
     publish_classification(req.session_id, response)
+    publish_service_metric(
+        req.session_id,
+        "classify",
+        "Severity classification completed with URL classification context",
+        {
+            "vulnerability_type": req.vulnerability_type,
+            "classified_by": classified_by,
+            "url_classification": req.url_classification,
+            "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+        },
+    )
     return response
 
 

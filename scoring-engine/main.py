@@ -10,6 +10,7 @@ import os
 import time
 import logging
 from typing import Optional
+import resource
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -262,6 +263,27 @@ def publish_score(session_id: str, resp: ScoreResponse):
         log.warning("Failed to publish score to Redis: %s", e)
 
 
+def publish_service_metric(session_id: str, phase: str, impact: str, extra: Optional[dict] = None):
+    try:
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        payload = {
+            "session_id": session_id,
+            "service": "scoring-engine",
+            "phase": phase,
+            "impact": impact,
+            "type": "service-metric",
+            "memory_mb": round(usage.ru_maxrss / 1024, 2),
+            "cpu_user_s": round(usage.ru_utime, 3),
+            "cpu_system_s": round(usage.ru_stime, 3),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        }
+        if extra:
+            payload.update(extra)
+        get_redis().xadd("service-metrics", {"payload": json.dumps(payload)})
+    except Exception as e:
+        log.warning("Failed to publish service metric: %s", e)
+
+
 # ---------------------------------------------------------------------------
 # API Endpoints
 # ---------------------------------------------------------------------------
@@ -277,6 +299,7 @@ def score(req: ScoreRequest):
         raise HTTPException(status_code=400, detail="session_id is required")
 
     log.info("Scoring session %s with %d findings", req.session_id, len(req.findings))
+    started = time.perf_counter()
 
     risk_score, breakdown = compute_score(req)
     risk_level = score_to_level(risk_score)
@@ -295,6 +318,17 @@ def score(req: ScoreRequest):
     )
 
     publish_score(req.session_id, response)
+    publish_service_metric(
+        req.session_id,
+        "score",
+        "Aggregated microservice outputs into final risk score",
+        {
+            "findings": len(req.findings),
+            "risk_score": response.risk_score,
+            "risk_level": response.risk_level,
+            "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+        },
+    )
     return response
 
 
