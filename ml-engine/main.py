@@ -11,6 +11,7 @@ import os
 import time
 import logging
 from typing import Optional
+import resource
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -59,6 +60,14 @@ class ReconData(BaseModel):
     stack_trace_detected: bool = False
     robots_found: bool = False
     disallowed_paths: list[str] = []
+    url_classification: str = ""
+    classification_confidence: float = 0.0
+    backend_endpoints: list[dict] = []
+    backend_endpoint_count: int = 0
+    rest_endpoint_count: int = 0
+    graphql_endpoint_count: int = 0
+    idor_candidate_count: int = 0
+    auth_surface_count: int = 0
 
 
 class VulnPrediction(BaseModel):
@@ -120,6 +129,9 @@ def extract_features(data: ReconData) -> dict:
     # Discovery features
     robots = 1 if data.robots_found else 0
     hidden_paths = len(data.disallowed_paths)
+    backend_class = 1 if data.url_classification in ("api-only", "full-backend", "graphql", "microservice-cluster") else 0
+    frontend_only = 1 if data.url_classification == "frontend-only" else 0
+    backend_endpoints = data.backend_endpoint_count or len(data.backend_endpoints)
 
     return {
         "total_open_ports": total_open,
@@ -136,6 +148,14 @@ def extract_features(data: ReconData) -> dict:
         "stack_trace_detected": stack_trace,
         "robots_found": robots,
         "hidden_paths_count": hidden_paths,
+        "url_is_backend": backend_class,
+        "url_is_frontend_only": frontend_only,
+        "classification_confidence": data.classification_confidence,
+        "backend_endpoint_count": backend_endpoints,
+        "rest_endpoint_count": data.rest_endpoint_count,
+        "graphql_endpoint_count": data.graphql_endpoint_count,
+        "idor_candidate_count": data.idor_candidate_count,
+        "auth_surface_count": data.auth_surface_count,
     }
 
 
@@ -161,6 +181,15 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
     if features["stack_trace_detected"]:
         sqli_score += 0.15
         reasons_sqli.append("Stack trace leakage detected")
+    if features["backend_endpoint_count"] > 0:
+        sqli_score += 0.20
+        reasons_sqli.append(f"{features['backend_endpoint_count']} backend API endpoint(s) discovered")
+    if features["rest_endpoint_count"] > 0:
+        sqli_score += 0.15
+        reasons_sqli.append(f"{features['rest_endpoint_count']} REST endpoint(s) expose parameterized surface")
+    if features["url_is_backend"]:
+        sqli_score += 0.10
+        reasons_sqli.append("URL classification indicates backend/API behavior")
     sqli_score = min(sqli_score, 1.0)
     if sqli_score >= 0.15:
         predictions.append(VulnPrediction(
@@ -168,6 +197,54 @@ def predict_vulnerabilities(features: dict) -> list[VulnPrediction]:
             confidence=round(sqli_score, 2),
             reasoning="; ".join(reasons_sqli),
             recommended_payloads=["' OR '1'='1", "1; DROP TABLE--", "' UNION SELECT NULL--", "1' AND SLEEP(5)--"],
+        ))
+
+    # --- IDOR ---
+    idor_score = 0.0
+    reasons_idor = []
+    if features["idor_candidate_count"] > 0:
+        idor_score += 0.45
+        reasons_idor.append(f"{features['idor_candidate_count']} object-style endpoint(s) discovered")
+    if features["backend_endpoint_count"] >= 2:
+        idor_score += 0.20
+        reasons_idor.append("Multiple backend endpoints increase object access surface")
+    if features["url_is_backend"]:
+        idor_score += 0.15
+        reasons_idor.append("Target classified as backend/API capable")
+    if features["graphql_endpoint_count"] > 0:
+        idor_score += 0.10
+        reasons_idor.append("GraphQL endpoint may expose object traversal paths")
+    idor_score = min(idor_score, 1.0)
+    if idor_score >= 0.15:
+        predictions.append(VulnPrediction(
+            category="Insecure Direct Object Reference (IDOR)",
+            confidence=round(idor_score, 2),
+            reasoning="; ".join(reasons_idor),
+            recommended_payloads=["/api/users/2", "/api/orders/1002", "?id=2", "?account_id=2"],
+        ))
+
+    # --- Weak Authentication / Authorization ---
+    auth_score = 0.0
+    reasons_auth = []
+    if features["auth_surface_count"] > 0:
+        auth_score += 0.45
+        reasons_auth.append(f"{features['auth_surface_count']} authentication-facing endpoint(s) discovered")
+    if features["graphql_endpoint_count"] > 0:
+        auth_score += 0.20
+        reasons_auth.append("GraphQL API discovered for introspection and auth checks")
+    if features["backend_endpoint_count"] > 0:
+        auth_score += 0.15
+        reasons_auth.append("Backend APIs discovered for token/session validation")
+    if features["missing_security_headers"] >= 3:
+        auth_score += 0.10
+        reasons_auth.append("Weak browser-side security headers may amplify auth risk")
+    auth_score = min(auth_score, 1.0)
+    if auth_score >= 0.15:
+        predictions.append(VulnPrediction(
+            category="Weak Authentication / Authorization",
+            confidence=round(auth_score, 2),
+            reasoning="; ".join(reasons_auth),
+            recommended_payloads=["/login", "/auth/token", "/session/refresh", "{\"query\":\"{ viewer { id } }\"}"],
         ))
 
     # --- Cross-Site Scripting (XSS) ---
@@ -314,6 +391,27 @@ def publish_predictions(session_id: str, predictions: list[VulnPrediction]):
         log.warning("Failed to publish predictions to Redis: %s", e)
 
 
+def publish_service_metric(session_id: str, phase: str, impact: str, extra: Optional[dict] = None):
+    try:
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        payload = {
+            "session_id": session_id,
+            "service": "ml-engine",
+            "phase": phase,
+            "impact": impact,
+            "type": "service-metric",
+            "memory_mb": round(usage.ru_maxrss / 1024, 2),
+            "cpu_user_s": round(usage.ru_utime, 3),
+            "cpu_system_s": round(usage.ru_stime, 3),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        }
+        if extra:
+            payload.update(extra)
+        get_redis().xadd("service-metrics", {"payload": json.dumps(payload)})
+    except Exception as e:
+        log.warning("Failed to publish service metric: %s", e)
+
+
 # ---------------------------------------------------------------------------
 # API Endpoints
 # ---------------------------------------------------------------------------
@@ -331,11 +429,23 @@ def predict(data: ReconData):
         raise HTTPException(status_code=400, detail="session_id is required")
 
     log.info("Received prediction request for session %s", data.session_id)
+    started = time.perf_counter()
 
     features = extract_features(data)
     predictions = predict_vulnerabilities(features)
 
     log.info("Predicted %d vulnerability categories for session %s", len(predictions), data.session_id)
+    publish_service_metric(
+        data.session_id,
+        "ml-analysis",
+        "Model 1 weighted backend API signals for vulnerability prediction",
+        {
+            "predictions": len(predictions),
+            "backend_endpoints": features["backend_endpoint_count"],
+            "graphql_endpoints": features["graphql_endpoint_count"],
+            "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+        },
+    )
 
     # Publish to Redis asynchronously (best-effort)
     publish_predictions(data.session_id, predictions)
