@@ -54,6 +54,7 @@ func main() {
 	mux.HandleFunc("/", handleIndex)
 	mux.HandleFunc("/api/session", handleCreateSession)
 	mux.HandleFunc("/api/session/events", handleSSE)
+	mux.HandleFunc("/api/session/stop", handleStopSession)
 	mux.HandleFunc("/dashboard", handleDashboard)
 
 	log.Println("[api-gateway] listening on :8080")
@@ -150,7 +151,44 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/dashboard?session=%s", sessionID), http.StatusSeeOther)
 }
 
+// handleStopSession publishes a stop event so all services cancel work.
+func handleStopSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessionID := r.URL.Query().Get("session")
+	if sessionID == "" {
+		// Try form body
+		if err := r.ParseForm(); err == nil {
+			sessionID = r.FormValue("session_id")
+		}
+	}
+	if sessionID == "" {
+		http.Error(w, "missing session_id", http.StatusBadRequest)
+		return
+	}
+
+	ctx := context.Background()
+	_, err := redisClient.Publish(ctx, "session-stop", map[string]interface{}{
+		"session_id": sessionID,
+		"timestamp":  time.Now().Format(time.RFC3339),
+	})
+	if err != nil {
+		log.Printf("[api-gateway] failed to publish session-stop: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[api-gateway] stop requested for session %s", sessionID)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "stopped", "session_id": sessionID})
+}
+
 // handleSSE streams Redis events to the browser via Server-Sent Events.
+// BUG FIX: Uses per-stream lastID tracking so stream IDs don't collide.
+// BUG FIX: Non-blocking reads so one empty stream doesn't freeze the loop.
 func handleSSE(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.URL.Query().Get("session")
 	if sessionID == "" {
@@ -170,10 +208,15 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	ctx := r.Context()
-	lastID := "0"
 
 	// Stream names to fan out to the dashboard
-	streams := []string{"recon-results", "session-state", "ml-predictions", "llm-classifications", "scoring-results"}
+	streams := []string{"recon-results", "session-state", "attack-results", "ml-predictions", "llm-classifications", "scoring-results"}
+
+	// BUG FIX: Track lastID per stream — stream IDs are only comparable within the same stream
+	lastIDs := make(map[string]string)
+	for _, s := range streams {
+		lastIDs[s] = "0"
+	}
 
 	for {
 		select {
@@ -182,8 +225,9 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 		default:
 		}
 
+		anyMessages := false
 		for _, stream := range streams {
-			messages, err := redisClient.ReadStream(ctx, stream, lastID, 50)
+			messages, err := redisClient.ReadStreamNonBlocking(ctx, stream, lastIDs[stream], 50)
 			if err != nil {
 				log.Printf("[sse] error reading %s: %v", stream, err)
 				continue
@@ -193,6 +237,8 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 				// Filter events for this session
 				if sid, ok := msg.Data["session_id"]; ok {
 					if sid != sessionID {
+						// Still update lastID so we don't re-read this msg
+						lastIDs[stream] = msg.ID
 						continue
 					}
 				}
@@ -204,10 +250,14 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 				})
 				fmt.Fprintf(w, "data: %s\n\n", data)
 				flusher.Flush()
-				lastID = msg.ID
+				lastIDs[stream] = msg.ID
+				anyMessages = true
 			}
 		}
 
-		time.Sleep(500 * time.Millisecond)
+		// Only sleep if there were no messages (tight loop when active, slow when idle)
+		if !anyMessages {
+			time.Sleep(300 * time.Millisecond)
+		}
 	}
 }

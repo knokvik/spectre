@@ -4,6 +4,17 @@ echo "========================================="
 echo "  SPECTRE Local Development Environment  "
 echo "========================================="
 
+# ── Cleanup: kill any leftover SPECTRE processes from previous runs ──
+echo "[cleanup] Killing stale processes..."
+pkill -f "uvicorn main:app --port 500" 2>/dev/null
+pkill -f "go run \." 2>/dev/null
+lsof -ti:8080 -ti:5001 -ti:5002 -ti:5003 2>/dev/null | xargs kill -9 2>/dev/null
+sleep 1
+
+# ── Flush Redis streams to avoid stale consumer groups ──
+echo "[cleanup] Flushing Redis streams..."
+redis-cli FLUSHALL > /dev/null 2>&1
+
 # Ensure all background jobs are gracefully killed when the script stops
 trap "echo -e '\nStopping all SPECTRE services...'; kill 0" EXIT
 

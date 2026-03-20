@@ -16,12 +16,16 @@ import (
 	spectreRedis "github.com/spectre/pkg/redis"
 )
 
+// Unique worker suffix to avoid consumer group contention across restarts
+var workerID = fmt.Sprintf("w-%d", time.Now().UnixNano())
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 var (
 	redisClient *spectreRedis.Client
 	sessionMap  sync.Map // Maps sessionID -> targetURL
+	sessionCtxs sync.Map // Maps sessionID -> context.CancelFunc
 
 	mlEngineURL      = getEnv("ML_ENGINE_URL", "http://localhost:5001")
 	llmClassifierURL = getEnv("LLM_CLASSIFIER_URL", "http://localhost:5002")
@@ -326,7 +330,7 @@ func main() {
 	// 1. Listen for new sessions to grab the Target URL
 	go func() {
 		log.Println("[attack-orchestrator] listening for session-start...")
-		err := redisClient.Subscribe(ctx, "session-start", "atk-session-group", "atk-session-worker", func(msg spectreRedis.StreamMessage) error {
+		err := redisClient.Subscribe(ctx, "session-start", "atk-session-group", "atk-session-"+workerID, func(msg spectreRedis.StreamMessage) error {
 			sessionID, _ := msg.Data["session_id"].(string)
 			targetURL, _ := msg.Data["target_url"].(string)
 
@@ -341,9 +345,28 @@ func main() {
 		}
 	}()
 
-	// 2. Listen for recon events to collect data AND trigger attacks on completion
+	// 2. Listen for session-stop events to cancel running pipelines
+	go func() {
+		log.Println("[attack-orchestrator] listening for session-stop...")
+		err := redisClient.Subscribe(ctx, "session-stop", "atk-stop-group", "atk-stop-"+workerID, func(msg spectreRedis.StreamMessage) error {
+			sessionID, _ := msg.Data["session_id"].(string)
+			if sessionID == "" {
+				return nil
+			}
+			if cancelFn, ok := sessionCtxs.LoadAndDelete(sessionID); ok {
+				log.Printf("[attack-orchestrator] STOP received — cancelling session %s", sessionID)
+				cancelFn.(context.CancelFunc)()
+			}
+			return nil
+		})
+		if err != nil {
+			log.Printf("[attack-orchestrator] session-stop stream error: %v", err)
+		}
+	}()
+
+	// 3. Listen for recon events to collect data AND trigger attacks on completion
 	log.Println("[attack-orchestrator] waiting for recon events...")
-	err := redisClient.Subscribe(ctx, "recon-results", "atk-recon-group", "atk-recon-worker", func(msg spectreRedis.StreamMessage) error {
+	err := redisClient.Subscribe(ctx, "recon-results", "atk-recon-group", "atk-recon-"+workerID, func(msg spectreRedis.StreamMessage) error {
 		sessionID, _ := msg.Data["session_id"].(string)
 		if sessionID == "" {
 			return nil
@@ -352,6 +375,8 @@ func main() {
 		step, _ := msg.Data["step"].(string)
 		eventType, _ := msg.Data["type"].(string)
 
+		log.Printf("[attack-orchestrator] recon event: session=%s type=%s step=%s", sessionID, eventType, step)
+
 		// Collect recon data as it streams in
 		if eventType == "recon" || eventType == "warning" {
 			collectReconEvent(sessionID, msg.Data)
@@ -359,17 +384,35 @@ func main() {
 
 		// When recon completes, launch the ML-powered attack pipeline
 		if step == "complete" {
-			val, ok := sessionMap.Load(sessionID)
-			if ok {
-				targetURL := val.(string)
-				log.Printf("[attack-orchestrator] Recon complete for %s. Starting ML pipeline...", sessionID)
-
-				// Update Dashboard Phase
-				publishPhaseUpdate(ctx, sessionID, "ml-analysis")
-				
-				// Launch ML-powered attacks in background
-				go runMLPipeline(ctx, sessionID, targetURL)
+			// BUG FIX: Read target_url directly from the completion event
+			// instead of relying on sessionMap (eliminates race condition)
+			targetURL, _ := msg.Data["target_url"].(string)
+			if targetURL == "" {
+				// Fallback to sessionMap if not in event
+				if val, ok := sessionMap.Load(sessionID); ok {
+					targetURL = val.(string)
+				}
 			}
+			if targetURL == "" {
+				log.Printf("[attack-orchestrator] WARNING: no target_url for session %s, skipping", sessionID)
+				return nil
+			}
+
+			log.Printf("[attack-orchestrator] Recon complete for %s → %s. Starting ML pipeline...", sessionID, targetURL)
+
+			// Create a cancellable context for this session
+			sessionCtx, cancel := context.WithCancel(ctx)
+			sessionCtxs.Store(sessionID, cancel)
+
+			// Update Dashboard Phase
+			publishPhaseUpdate(sessionCtx, sessionID, "ml-analysis")
+			
+			// Launch ML-powered attacks in background
+			go func() {
+				defer cancel()
+				defer sessionCtxs.Delete(sessionID)
+				runMLPipeline(sessionCtx, sessionID, targetURL)
+			}()
 		}
 		return nil
 	})
@@ -385,6 +428,12 @@ func main() {
 func runMLPipeline(ctx context.Context, sessionID, targetURL string) {
 	baseURL := strings.TrimRight(targetURL, "/")
 	collector := getCollector(sessionID)
+
+	// Check if already cancelled
+	if ctx.Err() != nil {
+		log.Printf("[attack-orchestrator] session %s cancelled before ML pipeline", sessionID)
+		return
+	}
 
 	// ── Phase 1: ML Prediction ──────────────────────────────────────
 	publishAttackEvent(ctx, sessionID, "info", "🧠 Sending recon data to ML Engine for vulnerability prediction...")
@@ -422,6 +471,13 @@ func runMLPipeline(ctx context.Context, sessionID, targetURL string) {
 	var findings []ScoreFinding
 
 	for _, pred := range mlResult.Predictions {
+		// Check cancellation between attacks
+		if ctx.Err() != nil {
+			publishAttackEvent(context.Background(), sessionID, "warning", "⛔ Assessment stopped by user.")
+			publishPhaseUpdate(context.Background(), sessionID, "report")
+			return
+		}
+
 		if len(pred.RecommendedPayloads) == 0 {
 			// Config-based finding (e.g. weak TLS) — no active attack needed
 			publishAttackEvent(ctx, sessionID, "warning",
@@ -444,6 +500,12 @@ func runMLPipeline(ctx context.Context, sessionID, targetURL string) {
 		}
 
 		for _, payload := range payloads {
+			if ctx.Err() != nil {
+				publishAttackEvent(context.Background(), sessionID, "warning", "⛔ Assessment stopped by user.")
+				publishPhaseUpdate(context.Background(), sessionID, "report")
+				return
+			}
+
 			attackURL := buildAttackURL(baseURL, pred.Category, payload)
 			result, status, confirmed := fireMLPayload(ctx, sessionID, pred.Category, attackURL, payload)
 
@@ -647,9 +709,11 @@ func fireStaticPayload(ctx context.Context, sessionID, attackName, targetURL, er
 
 // ---------------------------------------------------------------------------
 // Redis publishers
+// BUG FIX: Publish to "attack-results" NOT "recon-results" — the old code
+// caused a feedback loop because the orchestrator subscribes to recon-results.
 // ---------------------------------------------------------------------------
 func publishAttackEvent(ctx context.Context, sessionID, severity, message string) {
-	_, err := redisClient.Publish(ctx, "recon-results", map[string]interface{}{
+	_, err := redisClient.Publish(ctx, "attack-results", map[string]interface{}{
 		"session_id": sessionID,
 		"type":       severity,
 		"message":    message,

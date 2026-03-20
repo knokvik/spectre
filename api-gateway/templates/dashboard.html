@@ -4,26 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SPECTRE — Live Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0a0a0f;
-            --surface: #12121a;
-            --border: #1e1e2e;
+            --bg: #07070d;
+            --surface: #0f0f18;
+            --surface2: #161625;
+            --border: #1e1e32;
             --accent: #00ff88;
             --accent-dim: #00cc6e;
+            --accent-glow: rgba(0,255,136,0.15);
             --text: #e0e0e0;
-            --text-dim: #888;
+            --text-dim: #666;
             --danger: #ff4444;
             --warn: #ffaa00;
             --info: #4488ff;
+            --purple: #c881ff;
+            --pink: #ff64c8;
+            --cyan: #00c8ff;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Courier New', monospace;
+            font-family: 'JetBrains Mono', monospace;
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
         }
+
+        /* ── Topbar ── */
         .topbar {
             display: flex;
             align-items: center;
@@ -31,91 +39,141 @@
             padding: 12px 24px;
             background: var(--surface);
             border-bottom: 1px solid var(--border);
-            font-size: 0.85rem;
+            font-size: 0.82rem;
         }
-        .topbar .logo {
-            color: var(--accent);
-            font-weight: bold;
-            font-size: 1rem;
-            letter-spacing: 4px;
-        }
+        .topbar .logo { color: var(--accent); font-weight: 700; font-size: 1rem; letter-spacing: 4px; }
         .topbar .sep { color: var(--border); }
-        .topbar .target { color: var(--text); }
-        .topbar .live {
+        .topbar .target { color: var(--text-dim); font-size: 0.78rem; }
+        .topbar .status-badge {
+            margin-left: auto;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .status-live {
+            background: var(--accent-glow);
             color: var(--accent);
+            border: 1px solid rgba(0,255,136,0.3);
             animation: pulse 1.5s ease-in-out infinite;
         }
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .topbar .phase {
-            margin-left: auto;
-            color: var(--warn);
+        .status-done {
+            background: rgba(0,255,136,0.2);
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            animation: none;
         }
+        .status-stopped {
+            background: rgba(255,68,68,0.2);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+            animation: none;
+        }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
         .topbar .stop-btn {
-            background: var(--danger);
-            color: white;
-            border: none;
-            padding: 6px 14px;
+            background: transparent;
+            color: var(--danger);
+            border: 1px solid var(--danger);
+            padding: 5px 14px;
             border-radius: 4px;
             font-family: inherit;
-            font-weight: bold;
+            font-weight: 700;
             cursor: pointer;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
+            transition: all 0.2s;
         }
+        .topbar .stop-btn:hover {
+            background: var(--danger);
+            color: #fff;
+        }
+
+        /* ── Layout ── */
         .main {
             display: grid;
-            grid-template-columns: 280px 1fr;
+            grid-template-columns: 260px 1fr;
             height: calc(100vh - 50px);
         }
+
+        /* ── Sidebar ── */
         .sidebar {
             background: var(--surface);
             border-right: 1px solid var(--border);
             padding: 20px;
             overflow-y: auto;
+            display: flex;
+            flex-direction: column;
         }
         .sidebar h3 {
             color: var(--accent);
-            font-size: 0.75rem;
-            letter-spacing: 2px;
+            font-size: 0.7rem;
+            letter-spacing: 3px;
             text-transform: uppercase;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
         }
         .phase-list { list-style: none; }
         .phase-list li {
             padding: 10px 12px;
-            margin-bottom: 6px;
-            border-radius: 4px;
-            font-size: 0.85rem;
+            margin-bottom: 4px;
+            border-radius: 6px;
+            font-size: 0.78rem;
             display: flex;
             align-items: center;
             gap: 8px;
+            transition: all 0.3s;
         }
+        .phase-list li .icon { width: 16px; text-align: center; }
         .phase-list li.done { color: var(--accent); }
+        .phase-list li.done .icon::before { content: "✓"; }
         .phase-list li.active {
-            background: rgba(0,255,136,0.08);
+            background: var(--accent-glow);
             color: var(--accent);
             border: 1px solid rgba(0,255,136,0.2);
         }
+        .phase-list li.active .icon::before { content: "▸"; animation: blink 1s infinite; }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
         .phase-list li.pending { color: var(--text-dim); }
+        .phase-list li.pending .icon::before { content: "○"; }
+
+        /* Stats */
         .stats {
-            margin-top: 24px;
+            margin-top: auto;
             padding-top: 16px;
             border-top: 1px solid var(--border);
         }
-        .stat-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 0;
-            font-size: 0.82rem;
+        .stat-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 0.75rem; }
+        .stat-row .val { color: var(--accent); font-weight: 700; }
+
+        /* Risk Card */
+        .risk-card {
+            margin-top: 16px;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            text-align: center;
+            display: none;
         }
-        .stat-item .val { color: var(--accent); font-weight: bold; }
-        .content {
-            padding: 20px;
-            overflow-y: auto;
+        .risk-card .grade { font-size: 2.2rem; font-weight: 700; line-height: 1; margin: 6px 0; }
+        .risk-card .score-val { font-size: 0.9rem; color: var(--text-dim); }
+        .risk-card .level {
+            font-size: 0.72rem;
+            margin-top: 6px;
+            padding: 2px 10px;
+            border-radius: 3px;
+            display: inline-block;
+            font-weight: 700;
         }
+        .level-critical { background: rgba(255,0,0,0.3); color: #ff4444; }
+        .level-high { background: rgba(255,100,0,0.3); color: #ff6644; }
+        .level-medium { background: rgba(255,170,0,0.3); color: #ffaa00; }
+        .level-low { background: rgba(0,255,136,0.3); color: var(--accent); }
+
+        /* ── Content ── */
+        .content { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
         .content h3 {
             color: var(--accent);
-            font-size: 0.75rem;
-            letter-spacing: 2px;
+            font-size: 0.7rem;
+            letter-spacing: 3px;
             text-transform: uppercase;
             margin-bottom: 12px;
         }
@@ -124,137 +182,138 @@
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 16px;
-            height: calc(100vh - 130px);
+            flex: 1;
             overflow-y: auto;
-            font-size: 0.82rem;
+            font-size: 0.78rem;
             line-height: 1.8;
         }
         .log-entry {
             padding: 4px 0;
-            border-bottom: 1px solid rgba(30,30,46,0.5);
-            animation: fadeIn 0.3s ease-in;
+            border-bottom: 1px solid rgba(30,30,50,0.4);
+            animation: slideIn 0.3s ease-out;
         }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-        .log-entry .time { color: var(--text-dim); margin-right: 8px; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+        .log-entry .time { color: var(--text-dim); margin-right: 8px; font-size: 0.72rem; }
         .log-entry .tag {
             display: inline-block;
-            padding: 1px 6px;
+            padding: 1px 7px;
             border-radius: 3px;
-            font-size: 0.75rem;
+            font-size: 0.68rem;
             margin-right: 8px;
-            font-weight: bold;
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }
-        .tag-recon { background: rgba(0,255,136,0.15); color: var(--accent); }
-        .tag-info { background: rgba(68,136,255,0.15); color: var(--info); }
-        .tag-warn { background: rgba(255,170,0,0.15); color: var(--warn); }
+        .tag-recon { background: rgba(0,255,136,0.12); color: var(--accent); }
+        .tag-info { background: rgba(68,136,255,0.12); color: var(--info); }
+        .tag-warn { background: rgba(255,170,0,0.12); color: var(--warn); }
         .tag-error { background: rgba(255,68,68,0.15); color: var(--danger); }
-        .tag-critical { background: rgba(255,0,0,0.4); color: #fff; text-shadow: 0 0 10px red; }
-        .tag-attack { background: rgba(180,0,255,0.15); color: #c881ff; }
-        .tag-success { background: rgba(0,255,136,0.25); color: var(--accent); border: 1px solid var(--accent); }
-        .tag-ml { background: rgba(0,200,255,0.15); color: #00c8ff; }
-        .tag-llm { background: rgba(255,100,200,0.15); color: #ff64c8; }
-        .tag-score { background: linear-gradient(135deg, rgba(255,200,0,0.2), rgba(255,100,0,0.2)); color: #ffaa00; border: 1px solid rgba(255,170,0,0.3); }
-        .risk-card {
-            margin-top: 24px;
-            padding: 16px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: var(--surface);
-            text-align: center;
+        .tag-critical { background: rgba(255,0,0,0.35); color: #fff; text-shadow: 0 0 8px red; }
+        .tag-attack { background: rgba(180,0,255,0.12); color: var(--purple); }
+        .tag-success { background: rgba(0,255,136,0.2); color: var(--accent); border: 1px solid rgba(0,255,136,0.3); }
+        .tag-ml { background: rgba(0,200,255,0.12); color: var(--cyan); }
+        .tag-llm { background: rgba(255,100,200,0.12); color: var(--pink); }
+        .tag-score { background: linear-gradient(135deg, rgba(255,200,0,0.15), rgba(255,100,0,0.15)); color: var(--warn); border: 1px solid rgba(255,170,0,0.2); }
+
+        /* Completion banner */
+        .completion-banner {
             display: none;
-        }
-        .risk-card .grade {
-            font-size: 2.4rem;
-            font-weight: bold;
-            line-height: 1;
-            margin: 8px 0;
-        }
-        .risk-card .score-val {
-            font-size: 1.1rem;
-            color: var(--text-dim);
-        }
-        .risk-card .level {
-            font-size: 0.8rem;
-            margin-top: 6px;
-            padding: 2px 10px;
-            border-radius: 3px;
-            display: inline-block;
-            font-weight: bold;
-        }
-        .level-critical { background: rgba(255,0,0,0.3); color: #ff4444; }
-        .level-high { background: rgba(255,100,0,0.3); color: #ff6644; }
-        .level-medium { background: rgba(255,170,0,0.3); color: #ffaa00; }
-        .level-low { background: rgba(0,255,136,0.3); color: var(--accent); }
-        .empty-state {
+            background: var(--surface);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 24px;
+            margin-top: 16px;
             text-align: center;
-            padding: 60px 20px;
-            color: var(--text-dim);
+            box-shadow: 0 0 30px var(--accent-glow);
         }
-        .empty-state .spinner {
-            display: inline-block;
-            width: 24px;
-            height: 24px;
-            border: 2px solid var(--border);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 12px;
+        .completion-banner h2 { color: var(--accent); font-size: 1rem; margin-bottom: 8px; }
+        .completion-banner p { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 16px; }
+        .completion-banner .btn-group { display: flex; gap: 12px; justify-content: center; }
+        .btn-tryagain {
+            padding: 10px 24px;
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-tryagain:hover { box-shadow: 0 0 20px rgba(0,255,136,0.3); }
+        .btn-export {
+            padding: 10px 24px;
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-export:hover { background: var(--accent-glow); }
+
+        /* Spinner */
+        .spinner {
+            display: inline-block; width: 20px; height: 20px;
+            border: 2px solid var(--border); border-top-color: var(--accent);
+            border-radius: 50%; animation: spin 1s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); }
     </style>
 </head>
 <body>
     <div class="topbar">
-        <span class="logo">▌SPECTRE▐</span>
-        <span class="sep">│</span>
-        <span class="target" id="targetDisplay">{{.TargetURL}}</span>
-        <span class="sep">│</span>
-        <span class="live">● LIVE</span>
-        <span class="phase" id="phaseDisplay">Phase 1/7: RECON</span>
-        <button class="stop-btn" onclick="stopTest()">■ STOP</button>
+        <span class="logo">SPECTRE</span>
+        <span class="sep">|</span>
+        <span class="target" title="{{.TargetURL}}">{{.TargetURL}}</span>
+        <span class="status-badge status-live" id="statusBadge">● SCANNING</span>
+        <button class="stop-btn" onclick="stopTest()" id="stopBtn">■ STOP</button>
     </div>
-
     <div class="main">
         <div class="sidebar">
-            <h3>Phase Tracker</h3>
-            <ul class="phase-list">
-                <li class="active" id="phase-recon">▶ 1. Recon</li>
-                <li class="pending" id="phase-ml-analysis">○ 2. ML Analysis</li>
-                <li class="pending" id="phase-attack">○ 3. Attack</li>
-                <li class="pending" id="phase-classify">○ 4. Classify</li>
-                <li class="pending" id="phase-score">○ 5. Score</li>
-                <li class="pending" id="phase-report">○ 6. Report</li>
+            <h3>▸ Phases</h3>
+            <ul class="phase-list" id="phaseList">
+                <li id="phase-recon" class="active"><span class="icon"></span> Reconnaissance</li>
+                <li id="phase-ml-analysis" class="pending"><span class="icon"></span> ML Analysis</li>
+                <li id="phase-attack" class="pending"><span class="icon"></span> Attack Execution</li>
+                <li id="phase-classify" class="pending"><span class="icon"></span> Classification</li>
+                <li id="phase-score" class="pending"><span class="icon"></span> Risk Scoring</li>
+                <li id="phase-report" class="pending"><span class="icon"></span> Report</li>
             </ul>
 
-            <div class="risk-card" id="riskCard">
-                <div style="font-size:0.7rem;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase">Risk Grade</div>
-                <div class="grade" id="riskGrade">—</div>
-                <div class="score-val" id="riskScoreVal">—/10</div>
-                <div class="level" id="riskLevel">—</div>
+            <div class="stats" id="statsBlock">
+                <h3>▸ Stats</h3>
+                <div class="stat-row"><span>Events</span><span class="val" id="eventCount">0</span></div>
+                <div class="stat-row"><span>Ports Found</span><span class="val" id="portCount">0</span></div>
+                <div class="stat-row"><span>Elapsed</span><span class="val" id="elapsed">0s</span></div>
             </div>
 
-            <div class="stats">
-                <div class="stat-item">
-                    <span>Events</span>
-                    <span class="val" id="eventCount">0</span>
-                </div>
-                <div class="stat-item">
-                    <span>Ports Found</span>
-                    <span class="val" id="portCount">0</span>
-                </div>
-                <div class="stat-item">
-                    <span>Elapsed</span>
-                    <span class="val" id="elapsed">0s</span>
-                </div>
+            <div class="risk-card" id="riskCard">
+                <div style="font-size:0.7rem;color:var(--text-dim);letter-spacing:2px;">RISK SCORE</div>
+                <div class="grade" id="riskGrade">-</div>
+                <div class="score-val" id="riskScoreVal">-/10</div>
+                <div class="level" id="riskLevel">-</div>
             </div>
         </div>
-
         <div class="content">
-            <h3>Live Recon Timeline</h3>
+            <h3>▸ Live Activity</h3>
             <div class="log-container" id="logContainer">
-                <div class="empty-state" id="emptyState">
+                <div class="empty-state">
                     <div class="spinner"></div>
-                    <p>Waiting for recon results...</p>
+                    <p style="margin-top:12px;">Initializing scan of {{.TargetURL}}...</p>
+                </div>
+            </div>
+            <div class="completion-banner" id="completionBanner">
+                <h2>✅ Assessment Complete</h2>
+                <p>Security assessment has finished. Review results above.</p>
+                <div class="btn-group">
+                    <button class="btn-tryagain" onclick="window.location='/'">▶ TRY AGAIN</button>
+                    <button class="btn-export" onclick="exportLog()">↓ EXPORT LOG</button>
                 </div>
             </div>
         </div>
@@ -262,89 +321,75 @@
 
     <script>
         const sessionID = "{{.ID}}";
-        let eventCount = 0;
-        let portCount = 0;
         const startTime = Date.now();
+        let eventCounter = 0;
+        let portCounter = 0;
+        let currentPhase = 'recon';
+        let firstEvent = true;
 
-        // Update elapsed timer
+        // Elapsed time ticker
         setInterval(() => {
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            const mins = Math.floor(elapsed / 60);
-            const secs = elapsed % 60;
-            document.getElementById('elapsed').textContent =
-                mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+            const s = Math.floor((Date.now() - startTime) / 1000);
+            const m = Math.floor(s / 60);
+            document.getElementById('elapsed').textContent = m > 0 ? `${m}m ${s%60}s` : `${s}s`;
         }, 1000);
 
-        // Connect to SSE
+        // SSE connection
         const evtSource = new EventSource(`/api/session/events?session=${sessionID}`);
 
         evtSource.onmessage = function(event) {
-            const msg = JSON.parse(event.data);
-
-            // Remove empty state on first message
-            const emptyState = document.getElementById('emptyState');
-            if (emptyState) emptyState.remove();
-
-            eventCount++;
-            document.getElementById('eventCount').textContent = eventCount;
-
-            // Extract info
-            const data = msg.data;
-            
-            // Handle session state phase updates
-            if (msg.stream === "session-state" && data.phase) {
-                const phases = ['recon', 'ml-analysis', 'attack', 'classify', 'score', 'report'];
-                let passedActive = false;
-                for (let p of phases) {
-                    const el = document.getElementById('phase-' + p);
-                    if (!el) continue;
-                    
-                    if (p === data.phase) {
-                        el.className = 'active';
-                        el.innerHTML = el.innerHTML.replace(/^[○✓▶]/, '▶');
-                        passedActive = true;
-                        document.getElementById('phaseDisplay').textContent = `Phase ${phases.indexOf(p)+1}/${phases.length}: ${p.toUpperCase()}`;
-                    } else if (!passedActive) {
-                        el.className = 'done';
-                        el.innerHTML = el.innerHTML.replace(/^[○✓▶]/, '✓');
-                    } else {
-                        el.className = 'pending';
-                        el.innerHTML = el.innerHTML.replace(/^[○✓▶]/, '○');
-                    }
-                }
-                return; // Don't print state updates to timeline
-            }
-
-            const type = data.type || 'info';
+            const parsed = JSON.parse(event.data);
+            const data = parsed.data;
+            const stream = parsed.stream;
+            const type = data.type || '';
             const step = data.step || '';
-            const message = data.message || JSON.stringify(data);
+            const message = data.message || '';
+            const phase = data.phase || '';
 
-            // Count ports
-            if (data.open_ports) {
-                const ports = Array.isArray(data.open_ports) ? data.open_ports : [];
-                portCount += ports.length;
-                document.getElementById('portCount').textContent = portCount;
+            // Clear empty state on first event
+            if (firstEvent) {
+                document.getElementById('logContainer').innerHTML = '';
+                firstEvent = false;
             }
 
-            // Determine tag styling
-            let tagClass = "tag-info";
-            let tagLabel = type.toUpperCase();
-            
-            if (type === 'recon') { tagClass = 'tag-recon'; }
-            else if (type === 'info') { tagClass = 'tag-info'; }
-            else if (type === 'warning') { tagClass = 'tag-warn'; }
-            else if (type === 'error') { tagClass = 'tag-error'; }
-            else if (type === 'critical') { tagClass = 'tag-critical'; }
-            else if (type === 'attack') { tagClass = 'tag-attack'; }
-            else if (type === 'success') { tagClass = 'tag-success'; }
-            else if (type === 'ml-prediction') { tagClass = 'tag-ml'; tagLabel = 'ML'; }
-            else if (type === 'llm-classification') { tagClass = 'tag-llm'; tagLabel = 'LLM'; }
-            else if (type === 'risk-score') {
-                tagClass = 'tag-score'; tagLabel = 'SCORE';
-                // Show risk card in sidebar
+            eventCounter++;
+            document.getElementById('eventCount').textContent = eventCounter;
+
+            // ── Phase updates from session-state stream ──
+            if (stream === 'session-state' && phase) {
+                setPhase(phase);
+                return; // Don't show phase updates as log entries
+            }
+
+            // ── Determine tag style ──
+            let tagClass = 'tag-info';
+            let tagLabel = 'INFO';
+
+            if (stream === 'recon-results') {
+                tagClass = 'tag-recon';
+                tagLabel = 'RECON';
+                if (type === 'warning') { tagClass = 'tag-warn'; tagLabel = 'WARN'; }
+                // Track ports
+                if (step === 'port-scan' && data.port) {
+                    portCounter++;
+                    document.getElementById('portCount').textContent = portCounter;
+                }
+            } else if (stream === 'attack-results') {
+                if (type === 'attack')            { tagClass = 'tag-attack'; tagLabel = 'ATTACK'; }
+                else if (type === 'ml-prediction') { tagClass = 'tag-ml'; tagLabel = 'ML'; }
+                else if (type === 'llm-classification') { tagClass = 'tag-llm'; tagLabel = 'LLM'; }
+                else if (type === 'risk-score')    { tagClass = 'tag-score'; tagLabel = 'SCORE'; }
+                else if (type === 'critical')      { tagClass = 'tag-critical'; tagLabel = 'CRITICAL'; }
+                else if (type === 'error')         { tagClass = 'tag-error'; tagLabel = 'ERROR'; }
+                else if (type === 'warning')       { tagClass = 'tag-warn'; tagLabel = 'WARN'; }
+                else if (type === 'success')       { tagClass = 'tag-success'; tagLabel = 'DONE'; }
+                else if (type === 'info')          { tagClass = 'tag-info'; tagLabel = 'INFO'; }
+            }
+
+            // ── Risk score display ──
+            if (type === 'risk-score') {
                 const card = document.getElementById('riskCard');
                 if (card) card.style.display = 'block';
-                // Parse score from message (format: "📋 RISK SCORE: X.X/10 (LEVEL) — Grade: G")
                 const scoreMatch = message.match(/([\d.]+)\/10/);
                 const levelMatch = message.match(/\(([A-Z]+)\)/);
                 const gradeMatch = message.match(/Grade:\s*([A-F])/);
@@ -361,14 +406,13 @@
                     lv.className = 'level level-' + levelMatch[1].toLowerCase();
                 }
             }
-            
-            // Fallback for step labels if provided
-            if (step && type === 'info') {
-                tagClass = 'tag-recon';
-                tagLabel = 'RECON';
+
+            // ── Check for assessment completion ──
+            if (type === 'success' && (message.includes('complete') || message.includes('Complete'))) {
+                showCompletion();
             }
 
-            // Add log entry
+            // ── Add log entry ──
             const container = document.getElementById('logContainer');
             const entry = document.createElement('div');
             entry.className = 'log-entry';
@@ -379,7 +423,6 @@
             entry.innerHTML = `
                 <span class="time">${timeStr}</span>
                 <span class="tag ${tagClass}">${tagLabel}</span>
-                ${step ? `<strong>[${step}]</strong> ` : ''}
                 ${typeof message === 'string' ? message : JSON.stringify(message)}
             `;
             container.appendChild(entry);
@@ -390,12 +433,84 @@
             console.log('SSE connection lost, reconnecting...');
         };
 
+        function setPhase(newPhase) {
+            currentPhase = newPhase;
+            const phases = ['recon', 'ml-analysis', 'attack', 'classify', 'score', 'report'];
+            const currentIdx = phases.indexOf(newPhase);
+
+            phases.forEach((p, i) => {
+                const el = document.getElementById('phase-' + p);
+                if (!el) return;
+                if (i < currentIdx) {
+                    el.className = 'done';
+                } else if (i === currentIdx) {
+                    el.className = 'active';
+                } else {
+                    el.className = 'pending';
+                }
+            });
+
+            // Update topbar
+            const badge = document.getElementById('statusBadge');
+            const names = {
+                'recon': '● SCANNING',
+                'ml-analysis': '● ANALYZING',
+                'attack': '● ATTACKING',
+                'classify': '● CLASSIFYING',
+                'score': '● SCORING',
+                'report': '● COMPLETE',
+            };
+            badge.textContent = names[newPhase] || '● RUNNING';
+
+            if (newPhase === 'report') {
+                showCompletion();
+            }
+        }
+
+        function showCompletion() {
+            const badge = document.getElementById('statusBadge');
+            badge.textContent = '✓ COMPLETE';
+            badge.className = 'status-badge status-done';
+
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('completionBanner').style.display = 'block';
+
+            // Mark all phases as done
+            document.querySelectorAll('.phase-list li').forEach(li => li.className = 'done');
+        }
+
         function stopTest() {
             if (confirm('Stop the assessment?')) {
-                evtSource.close();
-                document.querySelector('.live').textContent = '● STOPPED';
-                document.querySelector('.live').style.color = '#ff4444';
+                fetch(`/api/session/stop?session=${sessionID}`, { method: 'POST' })
+                    .then(r => r.json())
+                    .then(() => {
+                        const badge = document.getElementById('statusBadge');
+                        badge.textContent = '■ STOPPED';
+                        badge.className = 'status-badge status-stopped';
+                        document.getElementById('stopBtn').style.display = 'none';
+
+                        // Show try again
+                        const banner = document.getElementById('completionBanner');
+                        banner.querySelector('h2').textContent = '■ Assessment Stopped';
+                        banner.querySelector('p').textContent = 'The scan was stopped. You can start a new assessment.';
+                        banner.style.display = 'block';
+                    })
+                    .catch(() => {
+                        evtSource.close();
+                    });
             }
+        }
+
+        function exportLog() {
+            const entries = document.querySelectorAll('.log-entry');
+            let text = 'SPECTRE Assessment Log\n' + '='.repeat(50) + '\n\n';
+            entries.forEach(e => { text += e.textContent.trim() + '\n'; });
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `spectre-report-${sessionID}.txt`;
+            a.click();
         }
     </script>
 </body>

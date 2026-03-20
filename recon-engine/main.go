@@ -17,6 +17,7 @@ import (
 )
 
 var redisClient *spectreRedis.Client
+var sessionCancels sync.Map // sessionID -> context.CancelFunc
 
 func main() {
 	log.Println("[recon-engine] starting...")
@@ -25,6 +26,25 @@ func main() {
 	defer redisClient.Close()
 
 	ctx := context.Background()
+
+	// Listen for session-stop events to cancel running recon
+	go func() {
+		log.Println("[recon-engine] listening for session-stop...")
+		err := redisClient.Subscribe(ctx, "session-stop", "recon-stop-group", "recon-stop-worker", func(msg spectreRedis.StreamMessage) error {
+			sessionID, _ := msg.Data["session_id"].(string)
+			if sessionID == "" {
+				return nil
+			}
+			if cancelFn, ok := sessionCancels.LoadAndDelete(sessionID); ok {
+				log.Printf("[recon-engine] STOP received — cancelling recon for session %s", sessionID)
+				cancelFn.(context.CancelFunc)()
+			}
+			return nil
+		})
+		if err != nil {
+			log.Printf("[recon-engine] session-stop stream error: %v", err)
+		}
+	}()
 
 	// Subscribe to session-start stream
 	log.Println("[recon-engine] waiting for session-start events...")
@@ -38,7 +58,17 @@ func main() {
 		}
 
 		log.Printf("[recon-engine] starting recon for session %s → %s", sessionID, targetURL)
-		runRecon(ctx, sessionID, targetURL)
+		
+		// Create cancellable context for this session
+		sessionCtx, cancel := context.WithCancel(ctx)
+		sessionCancels.Store(sessionID, cancel)
+		
+		// Run recon and embed target_url in the completion event
+		runRecon(sessionCtx, sessionID, targetURL)
+		
+		// Clean up
+		cancel()
+		sessionCancels.Delete(sessionID)
 		return nil
 	})
 	if err != nil {
@@ -107,7 +137,11 @@ func runRecon(ctx context.Context, sessionID, targetURL string) {
 	wg.Wait()
 
 	elapsed := time.Since(startTime)
-	publishEvent(ctx, sessionID, "recon", "complete", fmt.Sprintf("Reconnaissance complete in %s", elapsed.Round(time.Millisecond)), nil)
+	// BUG FIX: Include target_url in the completion event so the
+	// attack orchestrator doesn't need sessionMap lookup (race condition fix)
+	publishEvent(ctx, sessionID, "recon", "complete", fmt.Sprintf("Reconnaissance complete in %s", elapsed.Round(time.Millisecond)), map[string]interface{}{
+		"target_url": targetURL,
+	})
 }
 
 // scanPorts scans the top 100 common ports concurrently.
@@ -141,7 +175,7 @@ func scanPorts(ctx context.Context, sessionID, host string) {
 			defer func() { <-sem }()
 
 			addr := fmt.Sprintf("%s:%d", host, p)
-			conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+			conn, err := net.DialTimeout("tcp", addr, 800*time.Millisecond)
 			if err == nil {
 				conn.Close()
 				mu.Lock()

@@ -192,6 +192,39 @@ func (c *Client) ReadStream(ctx context.Context, stream string, lastID string, c
 	return messages, nil
 }
 
+// ReadStreamNonBlocking reads the latest N messages from a stream without
+// blocking. Returns empty slice immediately if no new messages exist.
+// This prevents the SSE fan-out loop from freezing on streams with no data.
+func (c *Client) ReadStreamNonBlocking(ctx context.Context, stream string, lastID string, count int64) ([]StreamMessage, error) {
+	if lastID == "" {
+		lastID = "0"
+	}
+
+	results, err := c.rdb.XRangeN(ctx, stream, "("+lastID, "+", count).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	var messages []StreamMessage
+	for _, msg := range results {
+		payloadStr, ok := msg.Values["payload"].(string)
+		if !ok {
+			continue
+		}
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(payloadStr), &data); err != nil {
+			continue
+		}
+		messages = append(messages, StreamMessage{
+			ID:     msg.ID,
+			Stream: stream,
+			Data:   data,
+		})
+	}
+
+	return messages, nil
+}
+
 // Close shuts down the Redis client connection.
 func (c *Client) Close() error {
 	return c.rdb.Close()
