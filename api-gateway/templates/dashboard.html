@@ -213,6 +213,7 @@
         .tag-ml { background: rgba(0,200,255,0.12); color: var(--cyan); }
         .tag-llm { background: rgba(255,100,200,0.12); color: var(--pink); }
         .tag-score { background: linear-gradient(135deg, rgba(255,200,0,0.15), rgba(255,100,0,0.15)); color: var(--warn); border: 1px solid rgba(255,170,0,0.2); }
+        .tag-api { background: rgba(0,200,255,0.12); color: var(--cyan); border: 1px solid rgba(0,200,255,0.22); }
 
         /* Completion banner */
         .completion-banner {
@@ -284,19 +285,206 @@
             white-space: pre-wrap;
             min-height: 100px;
         }
-        .graph-box {
+        .panel-box {
             background: var(--surface2);
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 16px;
-            flex: 1;
+        }
+        .meta-grid, .metric-list, .api-list, .mini-log {
             display: flex;
             flex-direction: column;
-            min-height: 250px;
+            gap: 10px;
         }
-        .graph-title { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 8px; display: flex; justify-content: space-between; }
-        .graph-val { color: var(--accent); font-weight: 700; font-size: 0.8rem; }
-        #resCanvas { width: 100%; height: 100%; flex: 1; }
+        .meta-row, .metric-item, .api-item, .mini-log-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 0.72rem;
+            line-height: 1.5;
+            color: var(--text-dim);
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .meta-row strong, .metric-item strong, .api-item strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+        .metric-item, .api-item, .mini-log-item {
+            display: block;
+        }
+        .metric-load {
+            display: inline-block;
+            min-width: 48px;
+            color: var(--accent);
+            font-weight: 700;
+        }
+        .metric-impact, .api-detail {
+            margin-top: 4px;
+            color: var(--text-dim);
+        }
+        .api-item code {
+            color: var(--cyan);
+            word-break: break-all;
+        }
+        .mini-log-item .stamp {
+            color: var(--text-dim);
+            font-size: 0.68rem;
+            margin-bottom: 2px;
+        }
+        .empty-list {
+            color: var(--text-dim);
+            font-size: 0.72rem;
+            line-height: 1.6;
+        }
+        .section-group {
+            margin-top: 14px;
+        }
+        .section-group h4 {
+            font-size: 0.68rem;
+            color: var(--accent);
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+        .section-log-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .section-log-item {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .section-log-item .stamp {
+            color: var(--text-dim);
+            font-size: 0.64rem;
+            margin-bottom: 2px;
+        }
+        .consent-box {
+            display: none;
+            background: rgba(255,170,0,0.08);
+            border: 1px solid rgba(255,170,0,0.24);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .consent-box h4 {
+            color: var(--warn);
+            font-size: 0.78rem;
+            margin-bottom: 8px;
+        }
+        .consent-box p, .consent-box li {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            line-height: 1.6;
+        }
+        .consent-helper {
+            margin-top: 10px;
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            line-height: 1.6;
+        }
+        .scope-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        .scope-item {
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            padding: 12px;
+            background: rgba(255,255,255,0.02);
+        }
+        .scope-item.disabled {
+            opacity: 0.7;
+            border-color: rgba(255,170,0,0.12);
+        }
+        .scope-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        .scope-row input {
+            margin-top: 3px;
+        }
+        .scope-main {
+            flex: 1;
+        }
+        .scope-main code {
+            color: var(--cyan);
+            word-break: break-all;
+        }
+        .scope-meta {
+            margin-top: 6px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            font-size: 0.66rem;
+        }
+        .scope-pill {
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+        .scope-pill.internal {
+            color: var(--accent);
+            border-color: rgba(0,255,136,0.22);
+            background: rgba(0,255,136,0.08);
+        }
+        .scope-pill.external {
+            color: var(--warn);
+            border-color: rgba(255,170,0,0.22);
+            background: rgba(255,170,0,0.08);
+        }
+        .scope-pill.high {
+            color: #ff8a65;
+            border-color: rgba(255,138,101,0.24);
+            background: rgba(255,138,101,0.08);
+        }
+        .scope-pill.medium {
+            color: var(--info);
+            border-color: rgba(68,136,255,0.2);
+            background: rgba(68,136,255,0.08);
+        }
+        .scope-pill.recommended {
+            color: var(--purple);
+            border-color: rgba(200,129,255,0.24);
+            background: rgba(200,129,255,0.1);
+        }
+        .scope-reason {
+            margin-top: 6px;
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+        }
+        .consent-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .consent-actions button {
+            padding: 9px 14px;
+            border-radius: 6px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+        .consent-approve {
+            background: var(--accent);
+            border: 0;
+            color: var(--bg);
+        }
+        .consent-decline {
+            background: transparent;
+            border: 1px solid var(--warn);
+            color: var(--warn);
+        }
 
         /* Spinner */
         .spinner {
@@ -306,6 +494,16 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         .empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); }
+        @media (max-width: 1100px) {
+            .main { grid-template-columns: 220px 1fr; }
+            .right-panel { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); }
+        }
+        @media (max-width: 780px) {
+            .main { grid-template-columns: 1fr; height: auto; }
+            .sidebar, .content, .right-panel { border: 0; border-top: 1px solid var(--border); }
+            .topbar { flex-wrap: wrap; }
+            .topbar .status-badge { margin-left: 0; }
+        }
     </style>
 </head>
 <body>
@@ -321,6 +519,7 @@
             <h3>▸ Phases</h3>
             <ul class="phase-list" id="phaseList">
                 <li id="phase-recon" class="active"><span class="icon"></span> Reconnaissance</li>
+                <li id="phase-consent" class="pending"><span class="icon"></span> Scope Review</li>
                 <li id="phase-ml-analysis" class="pending"><span class="icon"></span> ML Analysis</li>
                 <li id="phase-attack" class="pending"><span class="icon"></span> Attack Execution</li>
                 <li id="phase-classify" class="pending"><span class="icon"></span> Classification</li>
@@ -344,6 +543,27 @@
         </div>
         <div class="content">
             <h3>▸ Live Activity</h3>
+            <div class="consent-box" id="consentBox">
+                <h4>Deeper Verification Needs Consent</h4>
+                <p id="consentMessage">Additional infrastructure was detected.</p>
+                <div class="section-group">
+                    <h4>Detected Items</h4>
+                    <div class="section-log-list" id="consentItems"></div>
+                </div>
+                <div class="section-group">
+                    <h4>Selectable Endpoints</h4>
+                    <div class="scope-list" id="consentEndpointList">
+                        <div class="empty-list">Waiting for discovered endpoints...</div>
+                    </div>
+                </div>
+                <div class="consent-helper">
+                    Internal same-domain endpoints can be approved for deeper testing. External or restricted discoveries stay visible for review but cannot be selected here.
+                </div>
+                <div class="consent-actions">
+                    <button class="consent-approve" onclick="submitConsent('approve')">Approve And Continue</button>
+                    <button class="consent-decline" onclick="submitConsent('decline')">Skip Deeper Verification</button>
+                </div>
+            </div>
             <div class="log-container" id="logContainer">
                 <div class="empty-state">
                     <div class="spinner"></div>
@@ -364,12 +584,60 @@
                 <h3>▸ Live Summary</h3>
                 <div class="summary-box" id="liveSummary">Waiting for primary reconnaissance data...</div>
             </div>
-            <div class="graph-box">
-                <div class="graph-title">
-                    <span>ENGINE RESOURCE LOAD</span>
-                    <span class="graph-val" id="cpuVal">0%</span>
+            <div>
+                <h3>▸ User Panel</h3>
+                <div class="panel-box">
+                    <div class="meta-grid">
+                        <div class="meta-row"><span>Scope</span><strong>{{.Scope}}</strong></div>
+                        <div class="meta-row"><span>Intensity</span><strong>{{.Intensity}}</strong></div>
+                        <div class="meta-row"><span>Operator</span><strong>{{.Name}}</strong></div>
+                        <div class="meta-row"><span>Org</span><strong>{{.Organization}}</strong></div>
+                        <div class="meta-row"><span>Address</span><strong id="sessionAddress">{{if .Address}}{{.Address}}{{else}}Not provided{{end}}</strong></div>
+                        <div class="meta-row"><span>Saved Reuse</span><strong>{{if .AddressReused}}Yes{{else}}No{{end}}</strong></div>
+                    </div>
                 </div>
-                <canvas id="resCanvas"></canvas>
+            </div>
+            <div>
+                <h3>▸ Discovered Scope</h3>
+                <div class="panel-box">
+                    <div class="api-list" id="apiList">
+                        <div class="empty-list">No backend API endpoints discovered yet.</div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h3>▸ Service Impact</h3>
+                <div class="panel-box">
+                    <div class="meta-row"><span>SSE Status</span><strong id="connectionStatus">Connected</strong></div>
+                    <div class="metric-list" id="metricList">
+                        <div class="empty-list">Waiting for microservice metrics...</div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h3>▸ User Logs</h3>
+                <div class="panel-box">
+                    <div class="mini-log" id="userLogList">
+                        <div class="empty-list">User-facing activity will appear here.</div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <h3>▸ Section Logs</h3>
+                <div class="panel-box">
+                    <div class="section-group">
+                        <h4>Recon</h4>
+                        <div class="section-log-list" id="sectionRecon"><div class="empty-list">No recon section logs yet.</div></div>
+                    </div>
+                    <div class="section-group">
+                        <h4>ML + Classify</h4>
+                        <div class="section-log-list" id="sectionML"><div class="empty-list">No ML logs yet.</div></div>
+                    </div>
+                    <div class="section-group">
+                        <h4>Attack + Score</h4>
+                        <div class="section-log-list" id="sectionAttack"><div class="empty-list">No attack logs yet.</div></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -381,6 +649,15 @@
         let portCounter = 0;
         let currentPhase = 'recon';
         let firstEvent = true;
+        const apiDiscoveries = new Map();
+        const serviceMetrics = new Map();
+        const userLogs = [];
+        const sectionLogs = {
+            recon: [],
+            ml: [],
+            attack: [],
+        };
+        let pendingConsent = null;
 
         // Elapsed time ticker
         setInterval(() => {
@@ -392,6 +669,154 @@
         // SSE connection
         const evtSource = new EventSource(`/api/session/events?session=${sessionID}`);
 
+        function addSectionLog(section, message) {
+            if (!message) return;
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+            sectionLogs[section].push({ stamp: timeStr, message });
+            const target = section === 'recon' ? 'sectionRecon' : (section === 'ml' ? 'sectionML' : 'sectionAttack');
+            const list = document.getElementById(target);
+            const items = sectionLogs[section].slice(-5).reverse();
+            list.innerHTML = items.map(entry => `
+                <div class="section-log-item">
+                    <div class="stamp">${entry.stamp}</div>
+                    <div>${entry.message}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderConsentEndpoints(reviewEndpoints) {
+            const list = document.getElementById('consentEndpointList');
+            const items = reviewEndpoints && reviewEndpoints.length
+                ? reviewEndpoints
+                : Array.from(apiDiscoveries.values());
+            if (!items.length) {
+                list.innerHTML = '<div class="empty-list">Waiting for discovered endpoints...</div>';
+                return;
+            }
+
+            list.innerHTML = items
+                .sort((a, b) => {
+                    if (!!b.selectable === !!a.selectable) {
+                        return (b.confidence || 0) - (a.confidence || 0);
+                    }
+                    return a.selectable ? -1 : 1;
+                })
+                .slice(0, 16)
+                .map((item, idx) => {
+                    const key = item.normalized || item.discovered_endpoint || `endpoint-${idx}`;
+                    const checked = item.selectable && (item.recommended || item.scope_type === 'internal') ? 'checked' : '';
+                    const disabled = item.selectable ? '' : 'disabled';
+                    const scopeType = item.scope_type || 'unknown';
+                    const risk = item.risk || 'medium';
+                    const source = (item.source || 'recon').toUpperCase();
+                    const apiType = item.api_type || 'unknown';
+                    return `
+                        <div class="scope-item ${item.selectable ? '' : 'disabled'}">
+                            <div class="scope-row">
+                                <input type="checkbox" class="scope-checkbox" value="${key}" ${checked} ${disabled}>
+                                <div class="scope-main">
+                                    <code>${key}</code>
+                                    <div class="scope-meta">
+                                        <span class="scope-pill ${scopeType}">${scopeType}</span>
+                                        <span class="scope-pill ${risk}">${risk}</span>
+                                        <span class="scope-pill">${apiType}</span>
+                                        <span class="scope-pill">${source}</span>
+                                        ${item.recommended ? '<span class="scope-pill recommended">recommended</span>' : ''}
+                                    </div>
+                                    <div class="scope-reason">${item.reason || 'Discovered during endpoint enumeration.'}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+        }
+
+        function showConsentBox(message, items, reviewEndpoints) {
+            pendingConsent = { message, items, reviewEndpoints };
+            document.getElementById('consentMessage').textContent = message;
+            const itemsBox = document.getElementById('consentItems');
+            itemsBox.innerHTML = (items || []).map(item => `<div class="section-log-item">${item}</div>`).join('') || '<div class="empty-list">No detected items provided.</div>';
+            renderConsentEndpoints(reviewEndpoints);
+            document.getElementById('consentBox').style.display = 'block';
+        }
+
+        function submitConsent(action) {
+            if (!pendingConsent) return;
+            const selectedEndpoints = action === 'approve'
+                ? Array.from(document.querySelectorAll('.scope-checkbox:checked')).map(input => input.value)
+                : [];
+            const note = action === 'approve' ? 'Approved by user from dashboard' : 'Declined by user from dashboard';
+            fetch('/api/session/consent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    session_id: sessionID,
+                    action,
+                    note,
+                    selected_endpoints: JSON.stringify(selectedEndpoints),
+                }),
+            })
+                .then(r => r.json())
+                .then(() => {
+                    addSectionLog('attack', action === 'approve'
+                        ? `Scope approved by user with ${selectedEndpoints.length} selected endpoint(s).`
+                        : 'Deep verification declined by user.');
+                    document.getElementById('consentBox').style.display = 'none';
+                    pendingConsent = null;
+                });
+        }
+
+        function renderAPIs() {
+            const list = document.getElementById('apiList');
+            if (!apiDiscoveries.size) {
+                list.innerHTML = '<div class="empty-list">No discovered scope items yet.</div>';
+                return;
+            }
+            list.innerHTML = Array.from(apiDiscoveries.values())
+                .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+                .slice(0, 12)
+                .map(item => `
+                    <div class="api-item">
+                        <strong>${item.api_type || 'unknown'} · ${(item.scope_type || 'unknown').toUpperCase()} · ${(item.source || 'recon').toUpperCase()} · ${Math.round((item.confidence || 0) * 100)}%</strong>
+                        <div class="api-detail"><code>${item.normalized || item.discovered_endpoint}</code></div>
+                        <div class="api-detail">${item.reason || 'Endpoint discovered during recon.'}</div>
+                    </div>
+                `).join('');
+        }
+
+        function renderServiceMetrics() {
+            const list = document.getElementById('metricList');
+            if (!serviceMetrics.size) {
+                list.innerHTML = '<div class="empty-list">Waiting for microservice metrics...</div>';
+                return;
+            }
+            list.innerHTML = Array.from(serviceMetrics.values())
+                .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+                .slice(0, 8)
+                .map(metric => `
+                    <div class="metric-item">
+                        <strong>${metric.service || 'service'}</strong>
+                        <span class="metric-load">${metric.load_pct ? metric.load_pct + '%' : (metric.memory_mb ? metric.memory_mb + 'MB' : '-')}</span>
+                        <div class="metric-impact">${metric.phase || 'phase'} · ${metric.impact || 'processing'}${metric.duration_ms ? ` · ${metric.duration_ms}ms` : ''}</div>
+                    </div>
+                `).join('');
+        }
+
+        function renderUserLogs() {
+            const list = document.getElementById('userLogList');
+            if (!userLogs.length) {
+                list.innerHTML = '<div class="empty-list">User-facing activity will appear here.</div>';
+                return;
+            }
+            list.innerHTML = userLogs.slice(-8).reverse().map(entry => `
+                <div class="mini-log-item">
+                    <div class="stamp">${entry.stamp}</div>
+                    <div>${entry.message}</div>
+                </div>
+            `).join('');
+        }
+
         evtSource.onmessage = function(event) {
             const parsed = JSON.parse(event.data);
             const data = parsed.data;
@@ -400,6 +825,7 @@
             const step = data.step || '';
             const message = data.message || '';
             const phase = data.phase || '';
+            const eventName = data.event || '';
 
             // Clear empty state on first event
             if (firstEvent) {
@@ -416,6 +842,13 @@
                 return; // Don't show phase updates as log entries
             }
 
+            if (stream === 'service-metrics') {
+                serviceMetrics.set(data.service || `metric-${serviceMetrics.size}`, data);
+                renderServiceMetrics();
+                addSectionLog(data.phase === 'recon' ? 'recon' : (data.phase === 'ml-analysis' || data.phase === 'classify' ? 'ml' : 'attack'), `${data.service || 'service'}: ${data.impact || 'updated'}`);
+                return;
+            }
+
             // ── Determine tag style ──
             let tagClass = 'tag-info';
             let tagLabel = 'INFO';
@@ -424,6 +857,7 @@
                 tagClass = 'tag-recon';
                 tagLabel = 'RECON';
                 if (type === 'warning') { tagClass = 'tag-warn'; tagLabel = 'WARN'; }
+                if (type === 'backend-api' || type === 'endpoint-discovery' || eventName === 'rasm_discovery' || eventName === 'endpoint_discovery') { tagClass = 'tag-api'; tagLabel = 'API'; }
                 // Track ports
                 if (step === 'port-scan' && data.port) {
                     portCounter++;
@@ -439,6 +873,18 @@
                 else if (type === 'warning')       { tagClass = 'tag-warn'; tagLabel = 'WARN'; }
                 else if (type === 'success')       { tagClass = 'tag-success'; tagLabel = 'DONE'; }
                 else if (type === 'info')          { tagClass = 'tag-info'; tagLabel = 'INFO'; }
+            }
+
+            if (type === 'consent-required' || step === 'infrastructure-consent') {
+                showConsentBox(message, data.detected_items, data.review_endpoints || []);
+                setPhase('consent');
+            }
+
+            if (stream === 'session-consent' && data.action) {
+                if (data.action === 'approve' || data.action === 'decline') {
+                    document.getElementById('consentBox').style.display = 'none';
+                    pendingConsent = null;
+                }
             }
 
             // ── Risk score display ──
@@ -474,6 +920,22 @@
             if (type === 'risk-score') {
                 document.getElementById('liveSummary').textContent += '\n\nFINAL SCORE:\n' + message;
             }
+            if (type === 'backend-api' || type === 'endpoint-discovery' || eventName === 'rasm_discovery' || eventName === 'endpoint_discovery') {
+                apiDiscoveries.set(data.normalized || data.discovered_endpoint, data);
+                renderAPIs();
+                if (pendingConsent) {
+                    renderConsentEndpoints(pendingConsent.reviewEndpoints || Array.from(apiDiscoveries.values()));
+                }
+            }
+            if (message) {
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+                userLogs.push({ stamp: timeStr, message });
+                renderUserLogs();
+                if (stream === 'recon-results') addSectionLog('recon', message);
+                if (stream === 'attack-results' || stream === 'scoring-results') addSectionLog('attack', message);
+                if (stream === 'ml-predictions' || stream === 'llm-classifications') addSectionLog('ml', message);
+            }
 
             // ── Add log entry ──
             const container = document.getElementById('logContainer');
@@ -482,11 +944,12 @@
 
             const now = new Date();
             const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+            const displayMessage = message || data.description || data.reasoning || data.impact || JSON.stringify(data);
 
             entry.innerHTML = `
                 <span class="time">${timeStr}</span>
                 <span class="tag ${tagClass}">${tagLabel}</span>
-                ${typeof message === 'string' ? message : JSON.stringify(message)}
+                ${typeof displayMessage === 'string' ? displayMessage : JSON.stringify(displayMessage)}
             `;
             container.appendChild(entry);
             container.scrollTop = container.scrollHeight;
@@ -494,11 +957,16 @@
 
         evtSource.onerror = function() {
             console.log('SSE connection lost, reconnecting...');
+            document.getElementById('connectionStatus').textContent = 'Reconnecting';
+        };
+
+        evtSource.onopen = function() {
+            document.getElementById('connectionStatus').textContent = 'Connected';
         };
 
         function setPhase(newPhase) {
             currentPhase = newPhase;
-            const phases = ['recon', 'ml-analysis', 'attack', 'classify', 'score', 'report'];
+            const phases = ['recon', 'consent', 'ml-analysis', 'attack', 'classify', 'score', 'report'];
             const currentIdx = phases.indexOf(newPhase);
 
             phases.forEach((p, i) => {
@@ -517,6 +985,7 @@
             const badge = document.getElementById('statusBadge');
             const names = {
                 'recon': '● SCANNING',
+                'consent': '● WAITING REVIEW',
                 'ml-analysis': '● ANALYZING',
                 'attack': '● ATTACKING',
                 'classify': '● CLASSIFYING',
@@ -575,74 +1044,6 @@
             a.download = `spectre-report-${sessionID}.txt`;
             a.click();
         }
-
-        // ── Resource Graph Logic ──
-        const canvas = document.getElementById('resCanvas');
-        const ctx = canvas.getContext('2d');
-        const dataPoints = Array(30).fill(0);
-        let currentLoad = 10;
-        
-        function drawGraph() {
-            if (!canvas.parentElement) return;
-            // Get accurate dimensions
-            const rect = canvas.parentElement.getBoundingClientRect();
-            canvas.width = rect.width - 32;
-            canvas.height = rect.height - 40;
-            
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Grid
-            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-            ctx.lineWidth = 1;
-            for(let i=0; i<4; i++) {
-                ctx.beginPath();
-                ctx.moveTo(0, i * (canvas.height/4));
-                ctx.lineTo(canvas.width, i * (canvas.height/4));
-                ctx.stroke();
-            }
-
-            // Line
-            ctx.beginPath();
-            const stepWidth = canvas.width / (dataPoints.length - 1);
-            for(let i=0; i<dataPoints.length; i++) {
-                const x = i * stepWidth;
-                const y = canvas.height - (dataPoints[i] / 100 * canvas.height);
-                if(i===0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            }
-            ctx.strokeStyle = 'var(--accent)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            // Fill area
-            ctx.lineTo(canvas.width, canvas.height);
-            ctx.lineTo(0, canvas.height);
-            ctx.fillStyle = 'rgba(0,255,136,0.1)';
-            ctx.fill();
-        }
-
-        setInterval(() => {
-            let targetLoad = 5; // idle
-            if (currentPhase === 'recon') targetLoad = 55;
-            if (currentPhase === 'ml-analysis') targetLoad = 85;
-            if (currentPhase === 'attack') targetLoad = 40;
-            if (currentPhase === 'classify') targetLoad = 75;
-            if (currentPhase === 'score') targetLoad = 30;
-            if (document.getElementById('statusBadge').textContent.includes('COMPLETE')) targetLoad = 2;
-            
-            currentLoad += (targetLoad - currentLoad) * 0.2 + (Math.random()*12 - 6);
-            if(currentLoad < 2) currentLoad = Math.random()*2+1;
-            if(currentLoad > 98) currentLoad = 98;
-            
-            dataPoints.shift();
-            dataPoints.push(currentLoad);
-            
-            document.getElementById('cpuVal').textContent = Math.round(currentLoad) + '%';
-            drawGraph();
-        }, 800);
-        window.addEventListener('resize', drawGraph);
-        setTimeout(drawGraph, 200);
-
     </script>
 </body>
 </html>

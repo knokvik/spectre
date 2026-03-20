@@ -156,6 +156,37 @@
             line-height: 1.6;
         }
         .note strong { color: var(--accent); }
+        .auto-note {
+            margin: -6px 0 18px;
+            padding: 12px 14px;
+            border: 1px solid rgba(68,136,255,0.18);
+            border-radius: 8px;
+            background: rgba(68,136,255,0.06);
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            line-height: 1.6;
+        }
+        .reuse-banner {
+            display: none;
+            margin: -6px 0 18px;
+            padding: 12px 14px;
+            border: 1px solid rgba(0,255,136,0.18);
+            border-radius: 8px;
+            background: rgba(0,255,136,0.06);
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            line-height: 1.6;
+        }
+        .reuse-banner button {
+            margin-top: 10px;
+            padding: 8px 12px;
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            background: transparent;
+            color: var(--accent);
+            font-family: inherit;
+            cursor: pointer;
+        }
 
         /* Hidden consent fields auto-checked */
         .hidden { display: none; }
@@ -176,15 +207,21 @@
                 <input type="url" name="target_url" placeholder="https://example.com" required autofocus>
             </div>
 
+            <div class="input-group">
+                <label>CONTACT / ADDRESS (OPTIONAL)</label>
+                <input type="text" name="address" id="addressField" placeholder="Ops contact, office address, or engagement note">
+            </div>
+
+            <div class="reuse-banner" id="reuseBanner">
+                A previously used address/contact note is available for this browser session.
+                <button type="button" id="reuseAddressBtn">Use saved address</button>
+            </div>
+
+            <div class="auto-note">
+                Scope is detected automatically. SPECTRE will inspect both the web surface and server-side evidence, then pause for consent if deeper infrastructure verification is discovered.
+            </div>
+
             <div class="options">
-                <div class="option-group">
-                    <label class="group-label">SCOPE</label>
-                    <select name="scope">
-                        <option value="web+server" selected>Web + Server</option>
-                        <option value="web">Web Only</option>
-                        <option value="server">Server Only</option>
-                    </select>
-                </div>
                 <div class="option-group">
                     <label class="group-label">INTENSITY</label>
                     <select name="intensity">
@@ -204,6 +241,7 @@
                 <input type="checkbox" name="consent_responsibility" checked>
                 <input type="text" name="participant_name" value="operator">
                 <input type="text" name="organization" value="SPECTRE">
+                <input type="hidden" name="address_reused" id="addressReused" value="false">
             </div>
 
             <button type="submit" class="btn-start">▶ START ASSESSMENT</button>
@@ -214,5 +252,30 @@
             SPECTRE will perform active reconnaissance and attack simulations.
         </p>
     </div>
+    <script>
+        const addressField = document.getElementById('addressField');
+        const reuseBanner = document.getElementById('reuseBanner');
+        const reuseAddressBtn = document.getElementById('reuseAddressBtn');
+        const addressReused = document.getElementById('addressReused');
+        const savedAddress = localStorage.getItem('spectre:lastAddress');
+
+        if (savedAddress && !addressField.value) {
+            reuseBanner.style.display = 'block';
+        }
+
+        reuseAddressBtn.addEventListener('click', () => {
+            addressField.value = savedAddress;
+            addressReused.value = 'true';
+            reuseBanner.style.display = 'none';
+            addressField.focus();
+        });
+
+        document.querySelector('form').addEventListener('submit', () => {
+            const value = addressField.value.trim();
+            if (value) {
+                localStorage.setItem('spectre:lastAddress', value);
+            }
+        });
+    </script>
 </body>
 </html>

@@ -25,14 +25,16 @@ var (
 
 // Session represents an active assessment session.
 type Session struct {
-	ID           string    `json:"id"`
-	TargetURL    string    `json:"target_url"`
-	Scope        string    `json:"scope"`
-	Intensity    string    `json:"intensity"`
-	Name         string    `json:"name"`
-	Organization string    `json:"organization"`
-	CreatedAt    time.Time `json:"created_at"`
-	Phase        string    `json:"phase"`
+	ID            string    `json:"id"`
+	TargetURL     string    `json:"target_url"`
+	Scope         string    `json:"scope"`
+	Intensity     string    `json:"intensity"`
+	Name          string    `json:"name"`
+	Organization  string    `json:"organization"`
+	Address       string    `json:"address"`
+	AddressReused bool      `json:"address_reused"`
+	CreatedAt     time.Time `json:"created_at"`
+	Phase         string    `json:"phase"`
 }
 
 func main() {
@@ -53,6 +55,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleIndex)
 	mux.HandleFunc("/api/session", handleCreateSession)
+	mux.HandleFunc("/api/session/consent", handleSessionConsent)
 	mux.HandleFunc("/api/session/events", handleSSE)
 	mux.HandleFunc("/api/session/stop", handleStopSession)
 	mux.HandleFunc("/dashboard", handleDashboard)
@@ -119,25 +122,29 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	// Create session
 	sessionID := fmt.Sprintf("session-%d", time.Now().UnixNano())
 	session := &Session{
-		ID:           sessionID,
-		TargetURL:    targetURL,
-		Scope:        r.FormValue("scope"),
-		Intensity:    r.FormValue("intensity"),
-		Name:         r.FormValue("participant_name"),
-		Organization: r.FormValue("organization"),
-		CreatedAt:    time.Now(),
-		Phase:        "recon",
+		ID:            sessionID,
+		TargetURL:     targetURL,
+		Scope:         "auto",
+		Intensity:     r.FormValue("intensity"),
+		Name:          r.FormValue("participant_name"),
+		Organization:  r.FormValue("organization"),
+		Address:       r.FormValue("address"),
+		AddressReused: r.FormValue("address_reused") == "true",
+		CreatedAt:     time.Now(),
+		Phase:         "recon",
 	}
 	sessions.Store(sessionID, session)
 
 	// Publish session start event to Redis
 	ctx := context.Background()
 	_, err := redisClient.Publish(ctx, "session-start", map[string]interface{}{
-		"session_id": sessionID,
-		"target_url": targetURL,
-		"scope":      session.Scope,
-		"intensity":  session.Intensity,
-		"timestamp":  session.CreatedAt.Format(time.RFC3339),
+		"session_id":     sessionID,
+		"target_url":     targetURL,
+		"scope":          session.Scope,
+		"intensity":      session.Intensity,
+		"address":        session.Address,
+		"address_reused": session.AddressReused,
+		"timestamp":      session.CreatedAt.Format(time.RFC3339),
 	})
 	if err != nil {
 		log.Printf("[api-gateway] failed to publish session-start: %v", err)
@@ -149,6 +156,53 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect to dashboard
 	http.Redirect(w, r, fmt.Sprintf("/dashboard?session=%s", sessionID), http.StatusSeeOther)
+}
+
+func handleSessionConsent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form data", http.StatusBadRequest)
+		return
+	}
+
+	sessionID := r.FormValue("session_id")
+	action := r.FormValue("action")
+	note := r.FormValue("note")
+	selectedEndpointsRaw := r.FormValue("selected_endpoints")
+	if sessionID == "" || (action != "approve" && action != "decline") {
+		http.Error(w, "session_id and valid action are required", http.StatusBadRequest)
+		return
+	}
+
+	var selectedEndpoints []string
+	if selectedEndpointsRaw != "" {
+		if err := json.Unmarshal([]byte(selectedEndpointsRaw), &selectedEndpoints); err != nil {
+			http.Error(w, "selected_endpoints must be valid JSON array", http.StatusBadRequest)
+			return
+		}
+	}
+
+	ctx := context.Background()
+	_, err := redisClient.Publish(ctx, "session-consent", map[string]interface{}{
+		"session_id":         sessionID,
+		"action":             action,
+		"note":               note,
+		"selected_endpoints": selectedEndpoints,
+		"timestamp":          time.Now().Format(time.RFC3339),
+	})
+	if err != nil {
+		log.Printf("[api-gateway] failed to publish session-consent: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[api-gateway] consent %s recorded for session %s", action, sessionID)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": action, "session_id": sessionID, "selected_endpoints": selectedEndpoints})
 }
 
 // handleStopSession publishes a stop event so all services cancel work.
@@ -210,7 +264,7 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Stream names to fan out to the dashboard
-	streams := []string{"recon-results", "session-state", "attack-results", "ml-predictions", "llm-classifications", "scoring-results"}
+	streams := []string{"recon-results", "session-state", "attack-results", "ml-predictions", "llm-classifications", "scoring-results", "service-metrics", "session-consent"}
 
 	// BUG FIX: Track lastID per stream — stream IDs are only comparable within the same stream
 	lastIDs := make(map[string]string)
